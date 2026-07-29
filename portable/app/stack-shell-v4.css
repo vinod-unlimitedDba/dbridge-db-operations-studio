@@ -1,0 +1,553 @@
+/*
+ * DBridge v2.22 unified diagnostics and DevOps control-plane shell.
+ * Loaded after the v3 shell so this file can reshape existing workspaces
+ * without removing any database or platform capability.
+ */
+
+:root {
+  --v4-ink: #111827;
+  --v4-muted: #667085;
+  --v4-line: #dce3ee;
+  --v4-soft: #f4f7fb;
+  --v4-card: #ffffff;
+  --v4-purple: #6246e5;
+  --v4-purple-dark: #4530b7;
+  --v4-blue: #2474e5;
+  --v4-cyan: #0c9bb5;
+  --v4-green: #12805c;
+  --v4-amber: #a86006;
+  --v4-red: #c6334c;
+  --v4-shadow: 0 16px 40px rgba(28, 39, 61, .09);
+}
+
+[data-theme="dark"] {
+  --v4-ink: #edf2fa;
+  --v4-muted: #9ba9bc;
+  --v4-line: #2a3548;
+  --v4-soft: #101722;
+  --v4-card: #151e2b;
+  --v4-purple: #9a86ff;
+  --v4-purple-dark: #7962ed;
+  --v4-blue: #66a6ff;
+  --v4-cyan: #4dc6da;
+  --v4-green: #42c795;
+  --v4-amber: #efad54;
+  --v4-red: #ff758c;
+  --v4-shadow: 0 18px 44px rgba(0, 0, 0, .28);
+}
+
+/* Unified database diagnostics */
+
+.diagnostics-v4-hero {
+  position: relative;
+  overflow: hidden;
+  margin: 0 0 14px;
+  border: 1px solid color-mix(in srgb, var(--v4-purple) 28%, var(--v4-line));
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--v4-cyan) 18%, transparent), transparent 32%),
+    radial-gradient(circle at 62% 108%, color-mix(in srgb, var(--v4-purple) 22%, transparent), transparent 40%),
+    linear-gradient(138deg, #171b2d 0%, #252149 55%, #163e57 100%);
+  box-shadow: var(--v4-shadow);
+  color: #fff;
+}
+
+.diagnostics-v4-hero::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: .12;
+  background-image:
+    linear-gradient(rgba(255,255,255,.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.2) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(90deg, transparent, #000 60%);
+}
+
+.diagnostics-v4-head {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  align-items: start;
+  padding: 24px 26px 18px;
+}
+
+.diagnostics-v4-copy > span,
+.devops-v4-copy > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #9fdcf0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .14em;
+}
+
+.diagnostics-v4-copy h1,
+.devops-v4-copy h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(24px, 3vw, 38px);
+  letter-spacing: -.045em;
+  line-height: 1.06;
+}
+
+.diagnostics-v4-copy p,
+.devops-v4-copy p {
+  max-width: 790px;
+  margin: 9px 0 0;
+  color: #cbd5e7;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.diagnostics-v4-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.diagnostics-v4-actions button {
+  min-height: 36px;
+  border-color: rgba(255,255,255,.22);
+  background: rgba(255,255,255,.09);
+  color: #fff;
+  backdrop-filter: blur(10px);
+}
+
+.diagnostics-v4-actions button:hover {
+  border-color: rgba(255,255,255,.45);
+  background: rgba(255,255,255,.16);
+}
+
+.diagnostics-v4-pulse {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-top: 1px solid rgba(255,255,255,.12);
+  background: rgba(7, 12, 28, .34);
+}
+
+.diagnostics-v4-pulse article {
+  min-width: 0;
+  padding: 13px 18px;
+  border-right: 1px solid rgba(255,255,255,.1);
+}
+
+.diagnostics-v4-pulse article:last-child { border-right: 0; }
+.diagnostics-v4-pulse span,
+.diagnostics-v4-pulse small {
+  display: block;
+  overflow: hidden;
+  color: #aab7cc;
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-v4-pulse strong {
+  display: block;
+  overflow: hidden;
+  margin: 4px 0 2px;
+  color: #fff;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-journey {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 8px;
+  border: 1px solid var(--v4-line);
+  border-radius: 15px;
+  background: var(--v4-card);
+  box-shadow: 0 8px 26px rgba(34, 44, 66, .06);
+}
+
+.diagnostics-journey button {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 55px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--v4-muted);
+  text-align: left;
+}
+
+.diagnostics-journey button > i {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--v4-soft);
+  color: var(--v4-purple);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.diagnostics-journey button b,
+.diagnostics-journey button small { display: block; }
+.diagnostics-journey button b {
+  overflow: hidden;
+  color: var(--v4-ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diagnostics-journey button small {
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-journey button:hover {
+  border-color: color-mix(in srgb, var(--v4-purple) 28%, var(--v4-line));
+  background: color-mix(in srgb, var(--v4-purple) 5%, var(--v4-card));
+}
+
+.diagnostics-journey button.active {
+  border-color: color-mix(in srgb, var(--v4-purple) 35%, var(--v4-line));
+  background: color-mix(in srgb, var(--v4-purple) 10%, var(--v4-card));
+  box-shadow: inset 0 -2px 0 var(--v4-purple);
+}
+
+.diagnostics-journey button.active > i {
+  background: var(--v4-purple);
+  color: #fff;
+}
+
+.diagnostics-panel {
+  animation: diagnosticsEnter .22s ease both;
+}
+
+.diagnostics-panel[hidden] { display: none !important; }
+
+#diagnosticsEvidenceBody > .investigation-section {
+  display: none;
+  animation: diagnosticsEnter .22s ease both;
+}
+
+#diagnosticsEvidenceBody > .investigation-section.active { display: block; }
+
+.diagnostics-evidence-label {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 2px 0 12px;
+  padding: 13px 16px;
+  border: 1px solid color-mix(in srgb, var(--v4-blue) 20%, var(--v4-line));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--v4-blue) 5%, var(--v4-card));
+}
+
+.diagnostics-evidence-label > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--v4-blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.diagnostics-evidence-label b,
+.diagnostics-evidence-label small { display: block; }
+.diagnostics-evidence-label b { color: var(--v4-ink); font-size: 13px; }
+.diagnostics-evidence-label small { margin-top: 3px; color: var(--v4-muted); font-size: 10px; }
+
+#performance-view .performance-command-center {
+  border-radius: 17px;
+  box-shadow: var(--v4-shadow);
+}
+
+#performance-view .investigation-hero,
+#performance-view .investigation-flow,
+#performance-view .investigation-tabs { display: none !important; }
+
+@keyframes diagnosticsEnter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* DevOps control-plane reorganization */
+
+.devops-v4-hero {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 14px;
+  border: 1px solid #284055;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 15% -15%, rgba(66, 180, 255, .26), transparent 34%),
+    radial-gradient(circle at 92% 105%, rgba(34, 207, 151, .18), transparent 36%),
+    linear-gradient(135deg, #101a2a, #102b3d 55%, #15352f);
+  box-shadow: var(--v4-shadow);
+  color: #fff;
+}
+
+.devops-v4-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(390px, .8fr);
+  gap: 24px;
+  padding: 24px 26px 17px;
+}
+
+.devops-v4-context {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-self: center;
+  padding: 11px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 13px;
+  background: rgba(6, 13, 25, .26);
+}
+
+.devops-v4-context label {
+  display: grid;
+  gap: 4px;
+  color: #91a5bc;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.devops-v4-context label:last-child { grid-column: 1 / -1; }
+
+.devops-v4-context input,
+.devops-v4-context select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 8px;
+  background: rgba(255,255,255,.07);
+  color: #fff;
+}
+
+.devops-v4-context option { color: #101828; }
+
+.devops-v4-signalbar {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-top: 1px solid rgba(255,255,255,.1);
+  background: rgba(0,0,0,.16);
+}
+
+.devops-v4-signalbar article {
+  padding: 12px 17px;
+  border-right: 1px solid rgba(255,255,255,.09);
+}
+
+.devops-v4-signalbar article:last-child { border-right: 0; }
+.devops-v4-signalbar span,
+.devops-v4-signalbar small { display: block; color: #91a5bc; font-size: 9px; }
+.devops-v4-signalbar strong {
+  display: block;
+  overflow: hidden;
+  margin: 3px 0 2px;
+  color: #fff;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devops-v4-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 7px;
+  margin-bottom: 12px;
+  padding: 8px;
+  border: 1px solid var(--v4-line);
+  border-radius: 14px;
+  background: var(--v4-card);
+}
+
+.devops-v4-tabs button {
+  display: grid;
+  grid-template-columns: 31px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 50px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+
+.devops-v4-tabs button > i {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--v4-soft);
+  color: var(--v4-blue);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.devops-v4-tabs b,
+.devops-v4-tabs small { display: block; }
+.devops-v4-tabs b { color: var(--v4-ink); font-size: 11px; }
+.devops-v4-tabs small {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--v4-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devops-v4-tabs button.active {
+  border-color: color-mix(in srgb, var(--v4-blue) 28%, var(--v4-line));
+  background: color-mix(in srgb, var(--v4-blue) 8%, var(--v4-card));
+  box-shadow: inset 0 -2px 0 var(--v4-blue);
+}
+
+.devops-v4-tabs button.active > i { background: var(--v4-blue); color: #fff; }
+.devops-v4-section[hidden] { display: none !important; }
+.devops-v4-section { animation: diagnosticsEnter .2s ease both; }
+
+.devops-v4-guide {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.devops-v4-guide button {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 13px;
+  border: 1px solid var(--v4-line);
+  border-radius: 12px;
+  background: var(--v4-card);
+  text-align: left;
+  box-shadow: 0 7px 20px rgba(31, 43, 65, .04);
+}
+
+.devops-v4-guide button > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--v4-soft);
+  color: var(--v4-blue);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.devops-v4-guide b,
+.devops-v4-guide small { display: block; }
+.devops-v4-guide b { color: var(--v4-ink); font-size: 11px; }
+.devops-v4-guide small { margin-top: 3px; color: var(--v4-muted); font-size: 9px; line-height: 1.45; }
+.devops-v4-guide button:hover { border-color: color-mix(in srgb, var(--v4-blue) 35%, var(--v4-line)); transform: translateY(-1px); }
+
+.devops-section-banner {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  margin: 2px 0 11px;
+  padding: 12px 15px;
+  border-left: 3px solid var(--v4-blue);
+  border-radius: 4px 12px 12px 4px;
+  background: color-mix(in srgb, var(--v4-blue) 7%, var(--v4-card));
+}
+
+.devops-section-banner b,
+.devops-section-banner small { display: block; }
+.devops-section-banner b { color: var(--v4-ink); font-size: 12px; }
+.devops-section-banner small { margin-top: 2px; color: var(--v4-muted); font-size: 10px; }
+.devops-section-banner span {
+  color: var(--v4-blue);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
+/* Terminal integration details added by v4 */
+
+.terminal-remote-matrix {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  margin: 12px 0 0;
+}
+
+.terminal-remote-matrix article {
+  padding: 13px;
+  border: 1px solid var(--v4-line);
+  border-radius: 12px;
+  background: var(--v4-card);
+}
+
+.terminal-remote-matrix span,
+.terminal-remote-matrix b,
+.terminal-remote-matrix small { display: block; }
+.terminal-remote-matrix span { color: var(--v4-purple); font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.terminal-remote-matrix b { margin: 5px 0 3px; color: var(--v4-ink); font-size: 11px; }
+.terminal-remote-matrix small { color: var(--v4-muted); font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 1180px) {
+  .diagnostics-v4-pulse,
+  .devops-v4-signalbar { grid-template-columns: repeat(3, 1fr); }
+  .diagnostics-v4-pulse article:nth-child(3),
+  .devops-v4-signalbar article:nth-child(3) { border-right: 0; }
+  .diagnostics-journey { grid-template-columns: repeat(3, 1fr); }
+  .devops-v4-head { grid-template-columns: 1fr; }
+  .devops-v4-tabs { grid-template-columns: repeat(3, 1fr); }
+  .devops-v4-guide,
+  .terminal-remote-matrix { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .diagnostics-v4-head { grid-template-columns: 1fr; padding: 19px; }
+  .diagnostics-v4-actions { justify-content: flex-start; }
+  .diagnostics-v4-pulse,
+  .devops-v4-signalbar { grid-template-columns: repeat(2, 1fr); }
+  .diagnostics-v4-pulse article,
+  .devops-v4-signalbar article { border-bottom: 1px solid rgba(255,255,255,.08); }
+  .diagnostics-journey,
+  .devops-v4-tabs { display: flex; overflow-x: auto; }
+  .diagnostics-journey button,
+  .devops-v4-tabs button { min-width: 165px; }
+  .devops-v4-head { padding: 19px; }
+  .devops-v4-context { grid-template-columns: 1fr; }
+  .devops-v4-context label:last-child { grid-column: auto; }
+  .devops-v4-guide,
+  .terminal-remote-matrix { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostics-panel,
+  #diagnosticsEvidenceBody > .investigation-section,
+  .devops-v4-section { animation: none; }
+}

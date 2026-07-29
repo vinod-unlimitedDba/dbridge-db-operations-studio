@@ -8,7 +8,7 @@ Close the command window to stop it.
 
 Friendly application shell
 --------------------------
-DBridge v2.21 uses one consistent application shell across SQL Studio,
+DBridge v2.22 uses one consistent application shell across SQL Studio,
 performance, investigation, logs, DevOps, Terminal and security. The left navigation
 describes each workspace, the header shows the current task, and the safety
 strip keeps local-only, in-memory credential and read-only status visible.
@@ -418,3 +418,19 @@ The portable ZIP contains no installer and does not disable or bypass
 antivirus, endpoint protection, company proxy rules, RBAC or database
 permissions. Review the included SHA256 file and SECURITY-NOTES.txt before
 sharing it through an approved company email or file-transfer channel.
+
+
+UNIFIED SQL DIAGNOSTICS AND TRUSTED SERVER TABS
+-----------------------------------------------
+SQL Performance and Investigation are combined into one six-stage SQL
+Diagnostics workspace: Triage, Flight Recorder, Visual Plan, Regression,
+Timeline, and Controls. Existing engine-specific checks, 10053/TKPROF,
+baselines, recommendations, and evidence export remain available.
+
+The Terminal workspace accepts a server hostname, IPv4 address, or bracketed
+IPv6 address. It supports up to four live SSH server tabs plus non-secret saved
+server profiles and a known_hosts preflight. New server keys are never accepted
+automatically. Passwords and passphrases are not saved.
+
+DevOps is organized into Runtime, Delivery, Data Movement, Changes, and Guided
+Inspection views with a shared environment, application, and evidence window.

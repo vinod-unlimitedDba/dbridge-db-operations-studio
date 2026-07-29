@@ -1,4 +1,4 @@
-DBridge Portable v2.21 - Security Notes
+DBridge Portable v2.22 - Security Notes
 =======================================
 
 Purpose
@@ -51,3 +51,10 @@ Sharing
 Send the ZIP only through a company-approved email or file-transfer channel.
 Do not include database passwords, SSH keys, cloud tokens, connection exports,
 logs, traces, or incident evidence in the package.
+
+- Interactive SSH server tabs require an existing known_hosts entry and verify
+  the presented key on every connection. Hostname, IPv4, and IPv6 inputs are
+  validated. Sessions are capped at four and expire after 15 minutes idle.
+- Saved server profiles contain only label, host, port, username, and selected
+  authentication method. Passwords, passphrases, and private-key contents are
+  never written to browser storage.

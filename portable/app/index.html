@@ -36,6 +36,9 @@
   <link rel="stylesheet" href="/theme-dark.css">
   <link rel="stylesheet" href="/advanced-ui.css">
   <link rel="stylesheet" href="/stack-shell-v3.css">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/ssh-terminal.css">
+  <link rel="stylesheet" href="/stack-shell-v4.css">
   <script src="/theme-boot.js"></script>
 </head>
 <body>
@@ -57,7 +60,7 @@
       </nav>
       <div class="side-note"><span>SAFE DEFAULT</span><strong>Read-only until unlocked</strong><p>Write SQL and infrastructure changes require an explicit session unlock and confirmation.</p></div>
       <button type="button" class="sidebar-command" id="sidebarCommandPalette"><span>Search tools</span><kbd>Ctrl K</kbd></button>
-      <div class="version">DBridge Portable <b>v2.21</b></div>
+      <div class="version">DBridge Portable <b>v2.22</b></div>
     </aside>
 
     <main class="main" id="workspaceMain" tabindex="-1">
@@ -750,6 +753,42 @@ DBridge reads only appended bytes and does not lock or modify the source file.</
             <article><span>04</span><div><b>Existing company identity</b><p>Approved CLIs use their current login, kubeconfig, SSH agent, wallet and RBAC permissions.</p></div></article>
           </div>
         </section>
+
+        <section class="ssh-terminal-panel panel" id="sshTerminalPanel" aria-label="Interactive SSH terminal">
+          <header class="ssh-terminal-head">
+            <div><span>INTERACTIVE SESSION</span><h2>SSH terminal</h2><p>A real remote shell on a host already trusted in <code>known_hosts</code>. Unlike the profiles above, what you type is sent to the server and executed.</p></div>
+            <span class="ssh-terminal-state" id="sshTerminalState"><i></i>DISCONNECTED</span>
+          </header>
+          <div class="ssh-terminal-warning" id="sshTerminalWarning">
+            <span>!</span>
+            <p><b>This workspace executes what you type</b><small>The read-only allowlist does not apply inside a live shell. Your own SSH account permissions on the remote server are the only limit. Sessions close when DBridge exits or after 15 minutes idle.</small></p>
+          </div>
+          <div class="ssh-terminal-controls">
+            <label><span>HOST</span><input id="sshTerminalHost" autocomplete="off" placeholder="db-prod-01" maxlength="255"></label>
+            <label class="port"><span>PORT</span><input id="sshTerminalPort" value="22" autocomplete="off" maxlength="5"></label>
+            <label><span>USERNAME</span><input id="sshTerminalUsername" autocomplete="username" placeholder="dba" maxlength="64"></label>
+            <label><span>AUTHENTICATION</span><select id="sshTerminalAuth">
+              <option value="agent">OpenSSH agent (recommended)</option>
+              <option value="key">Private key file</option>
+              <option value="password">Password</option>
+            </select></label>
+            <label class="ssh-terminal-secret hidden" id="sshTerminalKeyField"><span>PRIVATE KEY PATH</span><input id="sshTerminalKeyPath" autocomplete="off" placeholder="C:\Users\you\.ssh\id_ed25519"></label>
+            <label class="ssh-terminal-secret hidden" id="sshTerminalPassphraseField"><span>KEY PASSPHRASE <small>OPTIONAL</small></span><input id="sshTerminalPassphrase" type="password" autocomplete="off"></label>
+            <label class="ssh-terminal-secret hidden" id="sshTerminalPasswordField"><span>PASSWORD</span><input id="sshTerminalPassword" type="password" autocomplete="current-password"></label>
+            <div class="ssh-terminal-actions">
+              <button type="button" class="primary" id="sshTerminalConnect">Connect</button>
+              <button type="button" class="secondary" id="sshTerminalDisconnect" disabled>Disconnect</button>
+            </div>
+          </div>
+          <div class="ssh-terminal-surface" id="sshTerminalSurface">
+            <div class="ssh-terminal-empty" id="sshTerminalEmpty"><span>SSH</span><b>No active shell</b><p>Enter a host that is already present in your <code>known_hosts</code> file and select Connect. DBridge never accepts a new host key for you.</p></div>
+            <div class="ssh-terminal-mount hidden" id="sshTerminalMount"></div>
+          </div>
+          <footer class="ssh-terminal-foot">
+            <span id="sshTerminalTarget">Not connected</span>
+            <small>Credentials are used for the handshake and then discarded. Nothing typed here is written to disk by DBridge.</small>
+          </footer>
+        </section>
       </section>
 
       <section class="view" id="security-view">
@@ -792,5 +831,9 @@ DBridge reads only appended bytes and does not lock or modify the source file.</
   <div class="toast" id="toast"></div>
   <script src="/app.js"></script>
   <script src="/stack-shell-v3.js"></script>
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/xterm-addon-fit.js"></script>
+  <script src="/ssh-terminal-ui.js"></script>
+  <script src="/stack-shell-v4.js"></script>
 </body>
 </html>

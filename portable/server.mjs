@@ -11,6 +11,7 @@ import { oracleBottleneckCatalog, analyzeOracleBottlenecks } from "./oracle-bott
 import { postgresBottleneckCatalog, analyzePostgresBottlenecks } from "./postgres-bottleneck.mjs";
 import { mongodbBottleneckCatalog, analyzeMongoBottlenecks } from "./mongodb-bottleneck.mjs";
 import { runtimeTraceCatalog, validateRuntimeTraceInput, runtimeTraceSql, analyzeRuntimeTrace } from "./runtime-trace.mjs";
+import { SSH_TERMINAL_LIMITS, normalizeSshHost, preflightSshTarget, openSshSession, attachSshStream, writeToSshSession, resizeSshSession, closeSshSession, listSshSessions, closeAllSshSessions } from "./ssh-terminal.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(ROOT, "app");
@@ -1148,7 +1149,7 @@ function devopsCommand(input) {
     const map = { version: ["--version"], status: ["status", "--short", "--branch"], branches: ["branch", "--all"], remotes: ["remote", "-v"], commits: ["log", "--oneline", "--decorate", "-n", "30"], diff: ["diff", "--stat"] };
     args = [...map[action]];
   } else if (toolId === "ssh") {
-    const host = devopsValue(input, "target", safeName, "SSH host alias", ["configuration", "connectivity"].includes(action));
+    const host = ["configuration", "connectivity"].includes(action) ? normalizeSshHost(input.target) : "";
     const map = { version: ["-V"], configuration: ["-G", host], connectivity: ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=yes", host, "exit"] };
     args = [...map[action]];
   } else if (toolId === "aws") {
@@ -1919,7 +1920,7 @@ async function openBrowser(url) {
 
 async function routeApi(req, res, url, port) {
   if (!isTrusted(req, port)) return json(res, 403, { ok: false, error: "Request rejected by local security policy" });
-  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.21.0", host: HOST, port });
+  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.22.0", host: HOST, port });
   if (req.method === "GET" && url.pathname === "/api/tools/status") return json(res, 200, { ok: true, tools: await toolStatus() });
   if (req.method === "GET" && url.pathname === "/api/adapters") {
     const availability = Object.fromEntries(await Promise.all(Object.entries(sqlAdapterCatalog).map(async ([id, adapter]) => {
@@ -2617,6 +2618,35 @@ async function routeApi(req, res, url, port) {
     const started = Date.now(); const result = await run(spec.command, spec.args, { timeoutMs: 45000 });
     return json(res, result.code === 0 ? 200 : 422, { ok: result.code === 0, error: result.code === 0 ? undefined : result.stderr || result.stdout || "Kafka lag capture failed", durationMs: Date.now() - started, displayCommand: spec.displayCommand, ...result });
   }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/preflight") {
+    const input = await body(req);
+    const target = await preflightSshTarget(input);
+    return json(res, 200, { ok: true, target });
+  }
+  if (req.method === "GET" && url.pathname === "/api/terminal/ssh/limits") {
+    return json(res, 200, { ok: true, limits: SSH_TERMINAL_LIMITS, sessions: listSshSessions() });
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/open") {
+    const input = await body(req);
+    const session = await openSshSession(input);
+    return json(res, 200, { ok: true, ...session });
+  }
+  if (req.method === "GET" && url.pathname === "/api/terminal/ssh/stream") {
+    // Streams until the client disconnects, so it must not fall through to json().
+    return attachSshStream(url.searchParams.get("session"), res, securityHeaders);
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/input") {
+    const input = await body(req);
+    return json(res, 200, { ok: true, ...writeToSshSession(input.sessionId, input.data) });
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/resize") {
+    const input = await body(req);
+    return json(res, 200, { ok: true, ...resizeSshSession(input.sessionId, input.cols, input.rows) });
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/close") {
+    const input = await body(req);
+    return json(res, 200, { ok: true, ...closeSshSession(input.sessionId) });
+  }
   return json(res, 404, { ok: false, error: "API endpoint not found" });
 }
 
@@ -2656,5 +2686,11 @@ async function listen() {
   }
   throw new Error("No free DBridge port was found between 17864 and 17873");
 }
+
+// Remote shells must not outlive the local service.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => { closeAllSshSessions(); process.exit(0); });
+}
+process.on("exit", () => closeAllSshSessions());
 
 listen().catch((error) => { console.error(`DBridge failed to start: ${error.message}`); process.exitCode = 1; });

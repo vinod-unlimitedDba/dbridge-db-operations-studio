@@ -23,6 +23,7 @@ if (-not (Test-Path -LiteralPath $modules)) {
   throw "Bundled database drivers are missing. Run npm install in the portable folder first."
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "server.mjs") -Destination $bundle
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "ssh-terminal.mjs") -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "oracle-sql-id.mjs") -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "oracle-bottleneck.mjs") -Destination $bundle
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "postgres-bottleneck.mjs") -Destination $bundle
@@ -39,7 +40,7 @@ Copy-Item -LiteralPath $runtime -Destination (Join-Path $bundle "node.exe")
 
 $manifest = Join-Path $bundle "PACKAGE-MANIFEST.txt"
 $manifestLines = @(
-  "DBridge Portable v2.21 payload manifest",
+  "DBridge Portable v2.22 payload manifest",
   "Generated: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))",
   "Format: SHA256  relative-path",
   "PACKAGE-MANIFEST.txt is not self-hashed.",

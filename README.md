@@ -16,6 +16,13 @@ If company security blocks unsigned portable executables, unzip
 
 ## Capabilities
 
+- A v2.22 unified diagnostics workspace combining performance triage, flight
+  recording, visual plans, regression comparison, timelines, controls, and
+  sanitized evidence export.
+- Trusted SSH server tabs for hostname, IPv4, and bracketed IPv6 targets, with
+  known_hosts preflight, four bounded sessions, and non-secret saved profiles.
+- A resource-centric DevOps control plane organized by runtime, delivery, data
+  movement, change comparison, and approved inspection.
 - A redesigned v2.21 application shell across every workspace, with consistent
   mission-control ribbons, a responsive dark operations rail, and an auto-hide
   left panel that expands on hover or keyboard focus and toggles with Ctrl+B
