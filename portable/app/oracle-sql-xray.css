@@ -1,0 +1,86 @@
+.oracle-xray-panel { margin-bottom: 12px; overflow: hidden; }
+.oracle-xray-kicker { margin: 0 0 3px !important; color: #504ae5 !important; font-size: 6px !important; font-weight: 900; letter-spacing: 1px; }
+.oracle-xray-title-badges { display: flex; gap: 6px; }
+.oracle-xray-title-badges span, .oracle-xray-title-badges em { padding: 6px 8px; border-radius: 12px; font-size: 6px; font-style: normal; font-weight: 900; letter-spacing: .6px; }
+.oracle-xray-title-badges span { background: #ebeaff; color: #4e43df; }
+.oracle-xray-title-badges em { background: #e5f9ec; color: #148445; }
+
+.oracle-xray-controls { display: grid; grid-template-columns: 190px 135px minmax(220px, 1fr) auto auto auto; align-items: end; gap: 9px; padding: 13px 15px; border-bottom: 1px solid #e4e8ed; background: #fafbfe; }
+.oracle-xray-controls label { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #818e9c; font-size: 6px; font-weight: 900; letter-spacing: .6px; }
+.oracle-xray-controls input, .oracle-xray-controls select { height: 36px; min-width: 0; padding: 0 10px; border: 1px solid #dae2e9; border-radius: 7px; background: #fff; color: #2f3c4c; font: 8px Consolas, monospace; outline: 0; }
+.oracle-xray-controls input:focus, .oracle-xray-controls select:focus { border-color: #6b63f4; box-shadow: 0 0 0 3px #ebeaff; }
+.oracle-xray-connection { display: flex; min-width: 0; flex-direction: column; justify-content: center; height: 36px; padding: 0 11px; border-left: 3px solid #6b63f4; border-radius: 5px; background: #f0efff; }
+.oracle-xray-connection span { color: #8480b8; font-size: 5px; font-weight: 900; letter-spacing: .55px; }
+.oracle-xray-connection b, .oracle-xray-connection small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oracle-xray-connection b { margin: 2px 0; color: #3f3a85; font-size: 7px; }
+.oracle-xray-connection small { color: #8683a9; font-size: 5px; }
+
+.oracle-xray-progress { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 8px 15px; border-bottom: 1px solid #e7eaee; background: #fff; }
+.oracle-xray-progress > div { height: 6px; overflow: hidden; border-radius: 4px; background: #e8ecf1; }
+.oracle-xray-progress i { display: block; width: 0; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #4840dc, #8e87ff); transition: width .3s ease; }
+.oracle-xray-progress span { color: #808d9a; font-size: 6px; font-weight: 800; }
+.oracle-xray-summary { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid #e5e9ed; background: linear-gradient(90deg, #fff, #f9f9ff); }
+.oracle-xray-summary article { display: flex; min-height: 82px; flex-direction: column; justify-content: center; padding: 11px 14px; border-right: 1px solid #e8ebf0; }
+.oracle-xray-summary article:last-child { border-right: 0; }
+.oracle-xray-summary span { color: #919dab; font-size: 5px; font-weight: 900; letter-spacing: .6px; }
+.oracle-xray-summary strong { margin: 6px 0 2px; color: #2f3c4b; font-size: 15px; }
+.oracle-xray-summary strong.good { color: #138445; }
+.oracle-xray-summary strong.warn { color: #c45e02; }
+.oracle-xray-summary strong.bad { color: #d02a5a; }
+.oracle-xray-summary small { color: #9aa6b1; font-size: 6px; }
+
+.oracle-xray-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px; border-bottom: 1px solid #dfe4e9; background: #f4f7f9; }
+.oracle-xray-tabs button { display: grid; grid-template-columns: 6px auto; grid-template-rows: auto auto; column-gap: 6px; min-width: 92px; min-height: 38px; align-items: center; padding: 6px 8px; border: 1px solid #dce2e8; border-radius: 7px; background: #fff; color: #617181; text-align: left; }
+.oracle-xray-tabs button i { grid-row: 1/3; width: 6px; height: 6px; border-radius: 50%; background: #b5bfc9; }
+.oracle-xray-tabs button span { overflow: hidden; max-width: 125px; font-size: 6px; font-weight: 900; letter-spacing: .35px; text-overflow: ellipsis; white-space: nowrap; }
+.oracle-xray-tabs button small { color: #a0aab5; font-size: 5px; }
+.oracle-xray-tabs button.active { border-color: #7069f5; background: #f1f0ff; box-shadow: 0 0 0 2px #ebeaff; color: #473dd5; }
+.oracle-xray-tabs button.running i { background: #766bf5; box-shadow: 0 0 0 3px #e4e2ff; }
+.oracle-xray-tabs button.passed i { background: #1fbb62; }
+.oracle-xray-tabs button.review i { background: #ee8a20; }
+.oracle-xray-tabs button.failed i { background: #e53b6a; }
+.oracle-xray-tabs button.stopped i { background: #8b98a5; }
+
+.oracle-xray-workspace { display: grid; grid-template-columns: 340px 1fr; min-height: 430px; }
+.oracle-xray-diagnosis { border-right: 1px solid #e1e5e9; background: #f8f9fc; }
+.oracle-xray-diagnosis > header, .oracle-xray-evidence > header { display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 13px; border-bottom: 1px solid #e4e8ec; background: #fff; }
+.oracle-xray-diagnosis header span, .oracle-xray-evidence header span { display: block; color: #8c98a4; font-size: 5px; font-weight: 900; letter-spacing: .65px; }
+.oracle-xray-diagnosis header b { color: #5d6b7a; font-size: 7px; }
+.oracle-xray-empty { display: flex; min-height: 355px; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+.oracle-xray-empty span { display: grid; place-items: center; width: 47px; height: 42px; border-radius: 10px; background: #e8e6ff; color: #5346e3; font-size: 8px; font-weight: 900; }
+.oracle-xray-empty b { margin: 10px 0 5px; color: #4f5d6e; font-size: 9px; }
+.oracle-xray-empty p { max-width: 280px; margin: 0; color: #8d9aa6; font-size: 6px; line-height: 1.6; }
+.oracle-xray-findings { display: flex; max-height: 377px; overflow: auto; flex-direction: column; gap: 6px; padding: 9px; }
+.oracle-xray-finding { display: grid; grid-template-columns: 45px 1fr; gap: 8px; padding: 9px; border: 1px solid #e1e5ea; border-left: 3px solid #6961ea; border-radius: 7px; background: #fff; }
+.oracle-xray-finding.high { border-left-color: #e23a69; }
+.oracle-xray-finding.medium { border-left-color: #ee8a20; }
+.oracle-xray-finding > span { font-size: 5px; font-weight: 900; color: #6963d6; }
+.oracle-xray-finding.high > span { color: #ce2e5c; }
+.oracle-xray-finding.medium > span { color: #b05700; }
+.oracle-xray-finding b { display: block; font-size: 7px; }
+.oracle-xray-finding p { margin: 4px 0 0; color: #8b98a4; font-size: 6px; line-height: 1.45; }
+
+.oracle-xray-evidence { min-width: 0; background: #141d29; }
+.oracle-xray-evidence > header { background: #1b2532; border-color: #2c3845; color: #d6e0eb; }
+.oracle-xray-evidence header b, .oracle-xray-evidence header small { display: block; }
+.oracle-xray-evidence header b { margin: 3px 0; font-size: 9px; }
+.oracle-xray-evidence header small { color: #7e8e9d; font-size: 6px; }
+.oracle-xray-evidence header button { color: #b4c2d1; }
+.oracle-xray-evidence pre { min-height: 310px; max-height: 510px; overflow: auto; margin: 0; padding: 14px; color: #c1cfdd; font: 8px/1.6 Consolas, monospace; white-space: pre; }
+.oracle-xray-evidence footer { display: flex; gap: 8px; padding: 9px 13px; border-top: 1px solid #2f3b48; background: #18212c; color: #8696a6; }
+.oracle-xray-evidence footer span { display: grid; flex: none; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #4c381f; color: #f6ab4f; font-size: 7px; font-weight: 900; }
+.oracle-xray-evidence footer p { margin: 0; font-size: 6px; line-height: 1.5; }
+.oracle-xray-evidence footer b { color: #becbd8; }
+
+@media (max-width: 1250px) {
+  .oracle-xray-controls { grid-template-columns: 1fr 140px 1fr; }
+  .oracle-xray-summary { grid-template-columns: repeat(3, 1fr); }
+  .oracle-xray-summary article:nth-child(3n) { border-right: 0; }
+}
+
+@media (max-width: 850px) {
+  .oracle-xray-controls, .oracle-xray-summary, .oracle-xray-workspace { grid-template-columns: 1fr; }
+  .oracle-xray-summary article { border-right: 0; border-bottom: 1px solid #e8ebf0; }
+  .oracle-xray-diagnosis { border-right: 0; border-bottom: 1px solid #e1e5e9; }
+  .oracle-xray-tabs button { min-width: calc(50% - 3px); }
+}

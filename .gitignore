@@ -2,7 +2,9 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.npm-cache/
+**/.npm-cache/
 /.pnp
 .pnp.*
 .yarn/*
@@ -40,4 +42,17 @@ next-env.d.ts
 /dist/
 /.wrangler/
 /outputs/
+/release/
 /work/
+/.dbridge-data/
+
+# portable runtime: bundled Node binary is redistributable, not source
+portable/node.exe
+
+# portable runtime state written while the console is running
+portable/data/
+portable/.qa-data/
+
+# local safety snapshots
+portable-backup-*/
+/release-2.14/

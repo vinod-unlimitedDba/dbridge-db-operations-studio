@@ -1,0 +1,13 @@
+{
+  "name": "dbridge-portable-runtime",
+  "version": "2.21.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mongodb": "^7.5.0",
+    "mysql2": "^3.23.1",
+    "oracledb": "^7.0.1",
+    "pg": "^8.22.0",
+    "tedious": "^20.0.0"
+  }
+}

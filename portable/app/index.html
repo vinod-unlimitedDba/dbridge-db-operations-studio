@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="dbridge-token" content="__DBRIDGE_TOKEN__">
+  <title>DBridge Advanced Local Console</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/catalog.css">
+  <link rel="stylesheet" href="/log-details.css">
+  <link rel="stylesheet" href="/remote-access.css">
+  <link rel="stylesheet" href="/log-intelligence-v1.css">
+  <link rel="stylesheet" href="/devops-advanced.css">
+  <link rel="stylesheet" href="/notepad-editor.css">
+  <link rel="stylesheet" href="/connection-session.css">
+  <link rel="stylesheet" href="/sql-studio-dbgate.css">
+  <link rel="stylesheet" href="/editor-autocomplete.css">
+  <link rel="stylesheet" href="/performance-dashboard.css">
+  <link rel="stylesheet" href="/sql-performance-v3.css">
+  <link rel="stylesheet" href="/oracle-performance-v1.css">
+  <link rel="stylesheet" href="/performance-friendly-v1.css">
+  <link rel="stylesheet" href="/runtime-trace-workbench.css">
+  <link rel="stylesheet" href="/sql-performance-unified-v1.css">
+  <link rel="stylesheet" href="/sql-recommendations.css">
+  <link rel="stylesheet" href="/oracle-sql-xray.css">
+  <link rel="stylesheet" href="/investigation-center.css">
+  <link rel="stylesheet" href="/intelligence-suite.css">
+  <link rel="stylesheet" href="/goldengate-suite.css">
+  <link rel="stylesheet" href="/container-visuals.css">
+  <link rel="stylesheet" href="/container-access.css">
+  <link rel="stylesheet" href="/file-comparison.css">
+  <link rel="stylesheet" href="/oracle-trace-lab.css">
+  <link rel="stylesheet" href="/advanced-audits.css">
+  <link rel="stylesheet" href="/workspace-tabs.css">
+  <link rel="stylesheet" href="/enterprise-shell-v1.css">
+  <link rel="stylesheet" href="/theme-dark.css">
+  <link rel="stylesheet" href="/advanced-ui.css">
+  <link rel="stylesheet" href="/stack-shell-v3.css">
+  <script src="/theme-boot.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspaceMain">Skip to workspace</a>
+  <div class="app-shell">
+    <aside class="sidebar" id="applicationSidebar" aria-label="Application navigation">
+      <div class="brand"><span class="brand-mark">D</span><span class="brand-copy"><strong>DBridge</strong><small>Database operations console</small></span><b>LOCAL</b></div>
+      <div class="local-status"><i></i><div><strong>Private local session</strong><small>Loopback only / no cloud relay</small></div></div>
+      <div class="nav-section-label">OPERATIONS</div>
+      <nav id="nav" aria-label="Main tools">
+        <button class="active" data-view="overview"><span class="nav-icon">01</span><span class="nav-copy"><b>Overview</b><small>Readiness and quick actions</small></span><kbd>1</kbd></button>
+        <button data-view="sql"><span class="nav-icon">02</span><span class="nav-copy"><b>SQL Studio</b><small>Connect, browse and query</small></span><kbd>2</kbd></button>
+        <button data-view="performance"><span class="nav-icon">03</span><span class="nav-copy"><b>SQL Performance</b><small>Bottlenecks and recommendations</small></span><kbd>3</kbd></button>
+        <button data-view="investigation"><span class="nav-icon">04</span><span class="nav-copy"><b>Investigation</b><small>Plans, baselines and incidents</small></span><kbd>4</kbd></button>
+        <button data-view="logs"><span class="nav-icon">05</span><span class="nav-copy"><b>Logs &amp; Traces</b><small>Remote live logs and analyzers</small></span><kbd>5</kbd></button>
+        <button data-view="devops"><span class="nav-icon">06</span><span class="nav-copy"><b>DevOps Hub</b><small>K8s, Docker, Kafka and Git</small></span><kbd>6</kbd></button>
+        <button data-view="terminal"><span class="nav-icon">07</span><span class="nav-copy"><b>Terminal</b><small>Tabby-style safe sessions</small></span><kbd>7</kbd></button>
+        <button data-view="security"><span class="nav-icon">08</span><span class="nav-copy"><b>Security</b><small>Local controls and posture</small></span><kbd>8</kbd></button>
+      </nav>
+      <div class="side-note"><span>SAFE DEFAULT</span><strong>Read-only until unlocked</strong><p>Write SQL and infrastructure changes require an explicit session unlock and confirmation.</p></div>
+      <button type="button" class="sidebar-command" id="sidebarCommandPalette"><span>Search tools</span><kbd>Ctrl K</kbd></button>
+      <div class="version">DBridge Portable <b>v2.21</b></div>
+    </aside>
+
+    <main class="main" id="workspaceMain" tabindex="-1">
+      <header class="application-header">
+        <div class="header-context">
+          <button class="menu" id="menu" type="button" aria-label="Open navigation" aria-controls="applicationSidebar" aria-expanded="false">Menu</button>
+          <div><span class="breadcrumb" id="pageEyebrow">DBRIDGE / OPERATIONS</span><b id="pageTitle">Operations overview</b><small id="pageContext">Local readiness, safety controls and guided starting points</small></div>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="global-search-trigger" id="openCommandPalette"><span>Search tools and workspaces</span><kbd>Ctrl K</kbd></button>
+          <span class="session-pulse" id="sessionPulse" title="Local session activity"><i></i><span>SESSION</span><b id="sessionPulseText">Idle</b></span>
+          <span id="clock"></span>
+          <span class="agent"><i></i>Local agent online</span>
+          <div class="theme-switch" id="themeSwitch" role="group" aria-label="Console appearance">
+            <button type="button" data-theme-mode="light" title="Light appearance" aria-label="Light appearance">☀</button>
+            <button type="button" data-theme-mode="auto" title="Match system appearance" aria-label="Match system appearance">◐</button>
+            <button type="button" data-theme-mode="dark" title="Dark appearance" aria-label="Dark appearance">☾</button>
+          </div>
+          <button class="icon-button sidebar-mode-toggle" id="toggleSidebarMode" title="Auto-hide the left panel (Ctrl+B)" aria-label="Auto-hide the left panel" aria-pressed="false">⇤</button>
+          <button class="icon-button" id="openShortcutMap" title="Keyboard shortcuts (Shift+/)" aria-label="Show keyboard shortcuts">Keys</button>
+          <button class="icon-button" id="refreshStatus" title="Refresh tool status" aria-label="Refresh local tool status">Refresh</button>
+        </div>
+      </header>
+      <nav class="core-workspace-tabs" id="coreWorkspaceTabs" aria-label="Primary database workflow">
+        <div class="core-workspace-label"><span>DAILY DATABASE WORKFLOW</span><small>Move between tasks without losing your in-memory connection</small></div>
+        <button type="button" data-workspace-tab="sql"><i>1</i><span><b>SQL Studio</b><small>Connect · browse · run</small></span><em>›</em></button>
+        <button type="button" data-workspace-tab="performance"><i>2</i><span><b>SQL Performance</b><small>Find the bottleneck</small></span><em>›</em></button>
+        <button type="button" data-workspace-tab="investigation"><i>3</i><span><b>Investigation</b><small>Compare · correlate</small></span><em>›</em></button>
+        <button type="button" data-workspace-tab="logs"><i>4</i><span><b>Logs &amp; Traces</b><small>Follow · analyze</small></span><em>›</em></button>
+        <button type="button" data-workspace-tab="terminal"><i>5</i><span><b>Terminal</b><small>Sessions · split · inspect</small></span><em>›</em></button>
+      </nav>
+      <section class="global-context-strip" aria-label="Current safety posture">
+        <div><i class="good"></i><span><b>Local service</b><small>127.0.0.1 only</small></span></div>
+        <div><i class="good"></i><span><b>Credentials</b><small>Passwords stay in memory</small></span></div>
+        <div><i class="good"></i><span><b>Default access</b><small>Read-only protection</small></span></div>
+        <div><i class="good"></i><span><b>Data path</b><small>Direct to approved systems</small></span></div>
+        <button type="button" data-workspace-view="security">Review security posture</button>
+      </section>
+
+      <section class="view active" id="overview-view">
+        <div class="page-intro"><div><p>ADVANCED OPERATIONS</p><h1>One local console. Every signal.</h1><span>Connect directly to databases, diagnose expensive statements and follow database logs without sending credentials to the cloud.</span></div><button class="primary" data-jump="sql">Open SQL Studio <b>→</b></button></div>
+        <div class="metric-grid">
+          <article><span class="metric-icon purple">DB</span><div><small>DB / DW ADAPTERS</small><strong>15 supported</strong><p>Database · NoSQL · cloud warehouse</p></div></article>
+          <article><span class="metric-icon green">≡</span><div><small>LOG SOURCES</small><strong>3 configured</strong><p>alert.log · error.log · mongo.log</p></div></article>
+          <article><span class="metric-icon blue">◫</span><div><small>DEVOPS TOOLS</small><strong id="availableCount">Scanning…</strong><p>Detected from your local PATH</p></div></article>
+          <article><span class="metric-icon amber">◆</span><div><small>SECURITY</small><strong>Read-only</strong><p>Loopback bound · same-origin protected</p></div></article>
+        </div>
+        <div class="overview-grid">
+          <article class="panel quick-panel"><div class="panel-title"><div><h2>Quick actions</h2><p>Start with the task you need now.</p></div></div><div class="quick-actions reduced"><button data-jump="sql"><span class="purple">›_</span><b>Run a query</b><small>Execute read-only SQL with a 60s limit</small><i>→</i></button><button data-jump="investigation"><span class="amber">◎</span><b>Investigate regression</b><small>Visual plans, baselines and incident timeline</small><i>→</i></button><button data-jump="logs"><span class="green">≡</span><b>Follow a log</b><small>Tail database and warehouse logs</small><i>→</i></button></div></article>
+          <article class="panel readiness"><div class="panel-title"><div><h2>Local tool readiness</h2><p>No automatic installs are performed.</p></div><button class="text-button" id="overviewScan">Scan again</button></div><div id="overviewTools" class="tool-readiness"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></article>
+        </div>
+        <div class="notice"><span>i</span><div><strong>Designed for restricted enterprise workstations</strong><p>The launcher needs no installer or admin access. Core database drivers are bundled; approved local clients remain optional for specialized adapters and authentication.</p></div></div>
+      </section>
+
+      <section class="view" id="sql-view">
+        <div class="page-intro compact"><div><p>SQL STUDIO</p><h1>Connect, explore and run commands</h1><span>A DBGate-style local workspace that adapts connection fields, object browsing and command execution to the selected database.</span></div><div class="mode-pill"><i></i>Read-only protection active</div></div>
+        <section class="friendly-start-path" aria-label="SQL Studio getting started">
+          <div><span>START HERE</span><b>Three simple steps</b><small>Your password stays in memory and is never saved.</small></div>
+          <button type="button" data-workspace-target="sqlEngine"><i>1</i><span><b>Choose &amp; connect</b><small>Select the database and enter its approved connection.</small></span></button>
+          <button type="button" data-workspace-target="databaseExplorerSearch"><i>2</i><span><b>Browse or write</b><small>Open an object or use a saved editor tab.</small></span></button>
+          <button type="button" data-workspace-target="runSql"><i>3</i><span><b>Run &amp; review</b><small>Execute safely, then inspect Results or Messages.</small></span></button>
+          <button type="button" class="friendly-next" data-workspace-view="performance"><span><b>Query is slow?</b><small>Continue to SQL Performance</small></span><em>→</em></button>
+        </section>
+        <div class="workbench">
+          <aside class="connection-panel panel">
+            <div class="panel-title"><div><span class="friendly-step-label">STEP 1</span><h2>Connect to a database</h2><p>Current execution target</p></div><span class="sql-live-badge disconnected" id="sqlLiveConnectionBadge"><i></i>DISCONNECTED</span></div>
+            <label>ENGINE<select id="sqlEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option><option value="mariadb">MariaDB</option><option value="redshift">Amazon Redshift</option><option value="synapse">Azure Synapse</option><option value="snowflake">Snowflake</option><option value="bigquery">Google BigQuery</option><option value="databricks">Databricks SQL</option><option value="db2">IBM Db2</option><option value="hana">SAP HANA</option><option value="clickhouse">ClickHouse</option><option value="teradata">Teradata</option></select></label>
+            <label>AUTHENTICATION<select id="sqlAuthMode"><option value="password">Database username and password</option><option value="context">Existing CLI / integrated context</option></select></label>
+            <label>NETWORK SECURITY<select id="sqlTlsMode"><option value="prefer">Driver default / prefer TLS</option><option value="require">Require trusted TLS</option><option value="disable">Disable TLS (approved internal only)</option></select></label>
+            <div class="field-row"><label><span id="sqlHostLabel">HOST</span><input id="sqlHost" value="localhost"></label><label class="port"><span>PORT</span><input id="sqlPort" value="1521"></label></div>
+            <label><span id="sqlDatabaseLabel">DATABASE / SERVICE</span><input id="sqlDatabase" value="ORCL" placeholder="ORCL, analytics…"></label>
+            <label><span id="sqlUsernameLabel">USERNAME</span><input id="sqlUsername" value="admin" autocomplete="username"></label>
+            <label id="sqlPasswordField"><span id="sqlPasswordLabel">PASSWORD</span><div class="password-field"><input id="sqlPassword" type="password" autocomplete="current-password"><button id="showSqlPassword" type="button">Show</button></div></label>
+            <div class="adapter-connection-note" id="sqlAdapterHint">Direct SQL through the bundled Oracle Thin driver.</div>
+            <div class="sql-connect-actions"><button type="button" class="primary" id="connectSqlStudio"><span>⌁</span> Connect</button><button type="button" class="secondary" id="disconnectSqlStudio" disabled>Disconnect</button></div>
+            <div class="sql-connection-detail" id="sqlConnectionDetail"><i></i><div><b>No active connection</b><small>Choose an engine and select Connect.</small></div></div>
+            <div class="connection-session-box"><div><span class="connection-session-badge" id="connectionSessionBadge">LOCAL SESSION</span><b id="connectionSessionStatus">Ready to save locally</b></div><div><button type="button" id="saveConnectionSession">Save now</button><button type="button" id="clearConnectionSession">Clear saved</button></div><small>Engine, authentication, network security, host, port, database and username only.</small></div>
+            <section class="connection-profiles" aria-label="Saved connection profiles">
+              <div class="connection-profiles-head"><span>CONNECTION PROFILES</span><small id="connectionProfileCount">None saved</small></div>
+              <div class="connection-profiles-row">
+                <select id="connectionProfileSelect" aria-label="Saved profiles for this engine"><option value="">Select a saved profile…</option></select>
+                <button type="button" id="saveConnectionProfile">Save as…</button>
+                <button type="button" class="danger" id="deleteConnectionProfile" disabled>Delete</button>
+              </div>
+              <div class="connection-profiles-note"><i>◆</i><span>Named targets for this engine, stored on this laptop only. Passwords are never included.</span></div>
+            </section>
+            <div class="secure-note"><span>◆</span><p>Connection fields are restored on this laptop. The password is never saved.</p></div>
+            <section class="database-explorer" aria-label="Database object explorer">
+              <div class="database-explorer-head"><div><span>DATABASE EXPLORER</span><b id="databaseExplorerTarget">Connect to browse objects</b></div><button type="button" id="refreshDatabaseExplorer" title="Refresh database objects" disabled>↻</button></div>
+              <label class="database-explorer-search">FILTER OBJECTS<input id="databaseExplorerSearch" placeholder="schema, table, view…" disabled></label>
+              <small class="database-explorer-tip">Double-click an object to open a bounded query.</small>
+              <div class="database-explorer-tree" id="databaseExplorerTree"><div class="database-explorer-empty"><span>⌁</span><b>Not connected</b><p>Tables, views and programmable objects will appear here.</p></div></div>
+            </section>
+          </aside>
+          <section class="editor-panel panel">
+            <div class="editor-friendly-heading"><span>STEP 2–3</span><div><b>Write, run and inspect</b><small>Tabs restore automatically · Ctrl+Enter runs the active command</small></div><em>READ ONLY</em></div>
+            <div class="editor-head"><div class="editor-tabs" id="editorTabs"></div><button class="add-tab" id="newEditorTab" title="New tab (Ctrl+N)">+</button><div class="editor-actions"><button id="openEditorFiles" title="Open local SQL/text file (Ctrl+O)">Open</button><button id="toggleFind" title="Find (Ctrl+F)">Find</button><button id="toggleReplace" title="Replace (Ctrl+H)">Replace</button><button id="goToLine" title="Go to line (Ctrl+G)">Go to</button><button id="toggleWrap" title="Toggle word wrap">Wrap</button><button id="zoomOut" title="Decrease font size">A-</button><button id="zoomIn" title="Increase font size">A+</button><button id="downloadEditorFile" title="Save active tab as a local file (Ctrl+S)">Save file</button><label class="write-toggle"><input id="allowWrites" type="checkbox"><span></span>Unlock writes</label><button id="formatSql">Format</button><button class="run-button" id="runSql"><span>▶</span> Run <kbd>Ctrl ↵</kbd></button></div></div>
+            <input type="file" id="editorFilePicker" class="hidden" multiple accept=".sql,.txt,.js,.json,.log">
+            <div class="editor-search hidden" id="editorSearchBar"><input id="editorFind" placeholder="Find"><input id="editorReplace" placeholder="Replace with"><label><input type="checkbox" id="editorMatchCase"> Match case</label><button id="findPrevious" title="Previous match">Prev</button><button id="findNext" title="Next match">Next</button><button id="replaceOne">Replace</button><button id="replaceAll">Replace all</button><span id="findMatches">0 matches</span><button id="closeFind" title="Close">Close</button></div>
+            <div class="editor-wrap"><div class="line-numbers" id="lineNumbers">1</div><textarea id="sqlText" spellcheck="false">select sql_id, executions, elapsed_time / 1000000 elapsed_seconds
+from v$sql
+where rownum &lt;= 20
+ order by elapsed_time desc</textarea><div class="editor-autocomplete hidden" id="editorAutocomplete" role="listbox" aria-label="Real-time code suggestions"><header><div><span>AUTO</span><b>Real-time completion</b></div><small id="autocompleteHint">Type to see suggestions</small></header><div class="editor-autocomplete-list" id="editorAutocompleteList"></div><footer><span>↑↓ choose</span><span>Tab / Enter insert</span><span>Esc close</span><em>Suggestions never execute automatically</em></footer></div></div>
+            <div class="editor-status"><span id="cursorStatus">Ln 1, Col 1</span><span id="selectionStatus">0 selected</span><span id="characterStatus">0 chars</span><span id="editorEngineStatus">Oracle</span><button type="button" id="toggleAutocomplete" class="active" title="Cycle completion scope: all tools, SQL only, DevOps only, off">AUTO · ALL</button><span id="autocompleteStatus">Ready</span><span>UTF-8</span><span>CRLF</span><span id="editorSaveStatus">Session loading...</span></div>
+            <div class="result-head"><div><button class="active" id="resultGridTab">Results</button><button id="resultMessagesTab">Messages</button></div><span id="sqlTiming">Ready</span></div>
+            <div class="results" id="sqlResults"><div class="empty-state"><span>›_</span><h3>Ready to execute</h3><p>Results and client messages will appear here.</p></div></div>
+            <div class="results hidden" id="sqlMessages"><pre class="output-pre">Connection and execution messages will appear here.</pre></div>
+          </section>
+        </div>
+        <div id="goldenGateSqlStudio" class="goldengate-sql-destination" style="margin-top:11px" aria-label="GoldenGate operations in SQL Studio"></div>
+      </section>
+
+      <section class="view" id="performance-view">
+        <div class="page-intro compact performance-page-intro"><div><p>SQL PERFORMANCE / UNIFIED WORKSPACE</p><h1>Diagnose a slow query from one screen</h1><span>Select the database, paste one statement identifier, then move from health to runtime evidence, root cause and safe action.</span></div><div class="mode-pill live"><i></i>Evidence only</div></div>
+        <section class="performance-command-center" aria-label="Multi-database performance command center">
+          <header class="performance-command-head">
+            <div><span>ACTIVE INVESTIGATION</span><h2 id="performanceContextName">Oracle performance workspace</h2><p id="performanceContextDescription">SQL_ID diagnostics, wait analysis, execution plans, AWR/ASH evidence and SQL Monitor.</p></div>
+            <div class="performance-connection-state"><i></i><div><span>SQL STUDIO CONNECTION</span><b id="performanceContextTarget">localhost:1521 / ORCL</b></div><button type="button" id="performanceOpenSqlStudio">Connection settings</button></div>
+          </header>
+          <div class="performance-unified-grid">
+            <aside class="performance-engine-rail">
+              <div class="performance-engine-rail-head"><span>1</span><div><b>Choose database</b><small>One selection updates every performance tool</small></div></div>
+              <div class="performance-engine-switcher" id="performanceEngineCards">
+                <button type="button" class="active oracle" data-performance-engine="oracle"><i>O</i><span><b>Oracle</b><small>SQL_ID · waits · plans</small></span><em>30</em></button>
+                <button type="button" class="postgres" data-performance-engine="postgres"><i>P</i><span><b>PostgreSQL</b><small>queryid · pg_stat</small></span><em>26</em></button>
+                <button type="button" class="mongodb" data-performance-engine="mongodb"><i>M</i><span><b>MongoDB</b><small>operation · profiler</small></span><em>19</em></button>
+                <button type="button" class="mysql" data-performance-engine="mysql"><i>MY</i><span><b>MySQL</b><small>digest · Performance Schema</small></span><em>10</em></button>
+                <button type="button" class="sqlserver" data-performance-engine="sqlserver"><i>MS</i><span><b>SQL Server</b><small>query hash · Query Store</small></span><em>10</em></button>
+              </div>
+              <div class="performance-engine-rail-foot"><i></i><span><b>95+ diagnostic checks</b><small>Fixed queries, bounded output, no automatic changes</small></span></div>
+            </aside>
+            <div class="performance-cockpit performance-investigation-start">
+              <aside class="performance-quick-investigate">
+                <div class="performance-quick-title"><span>2 · IDENTIFY THE STATEMENT</span><b id="performanceIdentifierLabel">Oracle SQL_ID</b><small id="performanceIdentifierHint">Paste the identifier from the application, monitor or slow-query log</small></div>
+                <label><input id="performanceQuickIdentifier" value="8m5j1t2y4n6p9" placeholder="Enter SQL_ID"><span id="performanceIdentifierExample">Example: 8m5j1t2y4n6p9</span></label>
+                <div class="performance-start-actions">
+                  <button type="button" class="secondary" id="performanceQuickSnapshot"><i>01</i><span><b>Engine health</b><small>Waits, locks, I/O and memory</small></span></button>
+                  <button type="button" class="primary trace" id="performanceQuickTrace"><i>02</i><span><b>Runtime evidence</b><small>Plans, compiler, waits and history</small></span></button>
+                  <button type="button" class="primary" id="performanceQuickRecommend"><i>03</i><span><b>Recommendations</b><small>Rank causes and safe next actions</small></span></button>
+                </div>
+                <p><i></i><span id="performanceQuickSafety">Uses approved Oracle diagnostic views and never applies a change.</span></p>
+              </aside>
+              <div class="performance-journey">
+                <div class="performance-journey-title"><span>3 · FOLLOW THE EVIDENCE</span><b>Use only the depth required for this incident</b></div>
+                <div class="performance-journey-steps">
+                  <button type="button" data-performance-jump="performanceHealthSection"><em>01</em><span><b>Health</b><small>Is the database under pressure?</small></span></button>
+                  <button type="button" data-performance-jump="performanceRuntimeTraceSection"><em>02</em><span><b>Runtime</b><small>What did this identifier consume?</small></span></button>
+                  <button type="button" data-performance-jump="performanceStatementSection"><em>03</em><span><b>SQL evidence</b><small>What plan and workload changed?</small></span></button>
+                  <button type="button" data-performance-jump="performanceChecksSection"><em>04</em><span><b>Advanced</b><small>Trace, X-Ray and focused checks</small></span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <nav class="performance-section-nav performance-mode-tabs" aria-label="SQL performance workspace">
+            <button type="button" class="active" data-performance-mode="overview"><i>01</i><span><b>Guided Analysis</b><small>Health and unified runtime trace</small></span></button>
+            <button type="button" data-performance-mode="engine"><i>02</i><span><b>Engine Deep Dive</b><small>Find the database bottleneck</small></span></button>
+            <button type="button" data-performance-mode="statement"><i>03</i><span><b>SQL Evidence</b><small>Analyze one statement</small></span></button>
+            <button type="button" data-performance-mode="advanced"><i>04</i><span><b>Trace &amp; Plans</b><small>X-Ray, 10053 and guided checks</small></span></button>
+            <div class="performance-mode-state"><span>CURRENT WORKSPACE</span><b id="performanceModeCurrent">Guided Analysis</b><small><i></i> Read-only workflow</small></div>
+          </nav>
+        </section>
+        <section class="performance-mode-guide" id="performanceModeGuide" aria-live="polite">
+          <div class="performance-mode-number" id="performanceModeNumber">01</div>
+          <div><span id="performanceModeEyebrow">START HERE</span><h2 id="performanceModeTitle">Capture health and statement evidence in one guided flow</h2><p id="performanceModeDescription">Confirm the connection, choose the engine, and capture retained runtime evidence for the affected identifier. Start during the slow period for the strongest signal.</p></div>
+          <div class="performance-mode-tips" id="performanceModeTips"><span>1. Confirm connection</span><span>2. Run health snapshot</span><span>3. Capture during the incident</span></div>
+          <button type="button" class="performance-mode-next" id="performanceModeNext">Continue to Engine Deep Dive <b>→</b></button>
+        </section>
+        <section class="runtime-trace-workbench" id="performanceRuntimeTraceSection" aria-label="Unified multi-database runtime trace workbench">
+          <header class="runtime-trace-head">
+            <div><span>RUNTIME EVIDENCE WORKBENCH</span><h2>See what happened to this statement</h2><p>Collect retained runtime, compiler, plan and wait evidence without executing the application statement or enabling a trace.</p></div>
+            <div class="runtime-trace-head-state"><i></i><span><b id="runtimeTraceEngineBadge">ORACLE · SQL_ID</b><small id="runtimeTraceEquivalent">Shared-pool compiler and runtime evidence</small></span></div>
+          </header>
+          <div class="runtime-trace-flow" aria-hidden="true"><span class="active"><i>1</i> Identify</span><b></b><span><i>2</i> Capture retained evidence</span><b></b><span><i>3</i> Rank importance</span><b></b><span><i>4</i> Verify safely</span></div>
+          <div class="runtime-trace-lanes" role="tablist" aria-label="Runtime trace database engine">
+            <button type="button" class="active oracle" data-runtime-trace-engine="oracle"><i>O</i><span><b>Oracle</b><small>Shared pool + 10053 path</small></span></button>
+            <button type="button" class="postgres" data-runtime-trace-engine="postgres"><i>P</i><span><b>PostgreSQL</b><small>queryid + pg_stat</small></span></button>
+            <button type="button" class="mongodb" data-runtime-trace-engine="mongodb"><i>M</i><span><b>MongoDB</b><small>op/comment + profiler</small></span></button>
+            <button type="button" class="mysql" data-runtime-trace-engine="mysql"><i>MY</i><span><b>MySQL</b><small>digest + P_S history</small></span></button>
+            <button type="button" class="sqlserver" data-runtime-trace-engine="sqlserver"><i>MS</i><span><b>SQL Server</b><small>Query Store + cache</small></span></button>
+          </div>
+          <div class="runtime-trace-controls">
+            <label><span id="runtimeTraceIdentifierLabel">ORACLE SQL_ID</span><input id="runtimeTraceIdentifier" value="8m5j1t2y4n6p9" maxlength="128" autocomplete="off" placeholder="Enter statement identifier"></label>
+            <label class="runtime-trace-collection hidden" id="runtimeTraceCollectionField"><span>MONGODB COLLECTION <small>OPTIONAL</small></span><input id="runtimeTraceCollection" maxlength="255" autocomplete="off" placeholder="orders"></label>
+            <label><span>IMPORTANCE FILTER</span><select id="runtimeTraceImportance"><option value="all">All findings</option><option value="medium">Medium and high</option><option value="high">High only</option></select></label>
+            <button type="button" class="secondary" id="runtimeTraceUseSelected">Use selected ID</button>
+            <button type="button" class="secondary" id="runtimeTraceReset">Clear</button>
+            <button type="button" class="primary" id="runtimeTraceCapture">Analyze runtime evidence</button>
+          </div>
+          <div class="runtime-trace-safety">
+            <span>RO</span><p><b id="runtimeTraceTraceName">Oracle 10053: retained evidence first</b><small id="runtimeTraceLimitation">A past 10053 file cannot be reconstructed from the shared pool. Generate a new trace only by reparsing in a separately approved traced session.</small></p>
+            <a id="runtimeTraceDoc" href="https://docs.oracle.com/en/database/oracle/oracle-database/26/arpls/DBMS_SQLDIAG.html" target="_blank" rel="noopener">Official method</a>
+          </div>
+          <div class="runtime-trace-progress"><div><i id="runtimeTraceProgressBar"></i></div><span id="runtimeTraceProgressText">Ready · retained evidence only</span></div>
+          <div class="runtime-trace-summary">
+            <article class="primary"><span>IMPORTANCE SCORE</span><strong id="runtimeTraceScore">—</strong><small id="runtimeTraceHeadline">Capture during the slow period</small></article>
+            <article><span>EXECUTIONS</span><strong id="runtimeTraceExecutions">—</strong><small>Retained workload count</small></article>
+            <article><span>AVERAGE RUNTIME</span><strong id="runtimeTraceAverage">—</strong><small>Per execution when available</small></article>
+            <article><span>MAX / LIVE RUNTIME</span><strong id="runtimeTraceMaximum">—</strong><small>Strongest duration signal</small></article>
+            <article><span>PLAN VARIANTS</span><strong id="runtimeTracePlans">—</strong><small>Retained plan or shape count</small></article>
+            <article><span>WAIT SIGNALS</span><strong id="runtimeTraceWaits">—</strong><small>Waiting or blocked matches</small></article>
+          </div>
+          <nav class="runtime-trace-tabs" aria-label="Runtime trace result views">
+            <button type="button" class="active" data-runtime-trace-tab="findings">Important findings <span id="runtimeTraceFindingCount">0</span></button>
+            <button type="button" data-runtime-trace-tab="timeline">Runtime timeline <span id="runtimeTraceTimelineCount">0</span></button>
+            <button type="button" data-runtime-trace-tab="evidence">Evidence checks <span id="runtimeTraceEvidenceCount">0</span></button>
+            <button type="button" data-runtime-trace-tab="terminal">Terminal script <span>DBA</span></button>
+            <button type="button" class="runtime-trace-copy" id="runtimeTraceCopyReport">Copy report</button>
+          </nav>
+          <div class="runtime-trace-view" id="runtimeTraceFindings"><div class="runtime-trace-empty"><span>TRACE</span><b>Ready for a retained-evidence capture</b><p>Choose the matching database engine, enter the statement identifier, and capture. Findings are ranked by runtime importance.</p></div></div>
+          <div class="runtime-trace-view hidden" id="runtimeTraceTimeline"><div class="runtime-trace-empty"><span>TIME</span><b>No runtime timeline yet</b><p>Timestamped and live duration signals will appear here.</p></div></div>
+          <div class="runtime-trace-view hidden" id="runtimeTraceEvidence"><div class="runtime-trace-empty"><span>DATA</span><b>No evidence checks yet</b><p>Each fixed read-only check will show success, row count, duration and expandable raw output.</p></div></div>
+          <div class="runtime-trace-view runtime-trace-terminal hidden" id="runtimeTraceTerminal">
+            <div><span>REVIEW-ONLY SCRIPT</span><p>The template is never executed automatically. Session tracing, profiler changes, optimizer_trace and Extended Events require normal DBA approval.</p><button type="button" id="runtimeTraceCopyTerminal">Copy script</button><button type="button" id="runtimeTraceOpenSqlStudio">Open in SQL Studio</button></div>
+            <pre id="runtimeTraceTerminalOutput">Capture retained evidence to generate the database-specific terminal script.</pre>
+          </div>
+        </section>
+        <div class="diagnostic-layout">
+          <div class="performance-hero" id="performanceOverviewHero">
+            <article class="performance-score"><div><span>PERFORMANCE COVERAGE</span><strong>5</strong><small>database engines</small></div><div class="score-ring"><b>95</b><span>CHECKS</span></div></article>
+            <article class="performance-capabilities"><div><span class="capability-icon purple">Q</span><p><b>Workload</b><small>Active queries and expensive SQL</small></p></div><div><span class="capability-icon amber">W</span><p><b>Waits & locks</b><small>Blocking chains and contention</small></p></div><div><span class="capability-icon blue">IO</span><p><b>I/O & memory</b><small>Cache, storage and pressure signals</small></p></div></article>
+          </div>
+          <article class="panel db-snapshot-panel performance-section" id="performanceHealthSection">
+            <div class="panel-title"><div><h2>Database health snapshot</h2><p>Run a coordinated set of guided checks and keep every result together for incident triage</p></div><span class="snapshot-count">50 CHECK CATALOG</span></div>
+            <div class="snapshot-controls"><label>DATABASE<select id="snapshotEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option></select></label><label>DEPTH<select id="snapshotDepth"><option value="core">Core health · 5 checks</option><option value="full">Full diagnostic · 10 checks</option></select></label><div class="snapshot-connection"><span>CONNECTION</span><b>Uses SQL Studio credentials in memory</b><small id="snapshotTarget">Oracle · localhost:1521</small></div><button class="secondary" id="stopDbSnapshot" disabled>Stop</button><button class="primary" id="runDbSnapshot">Run health snapshot</button></div>
+            <div class="audit-progress"><div><i id="dbSnapshotProgress"></i></div><span id="dbSnapshotProgressText">Ready · no checks running</span></div>
+            <div class="audit-summary"><article><span>COMPLETED</span><strong id="dbSnapshotCompleted">0 / 0</strong></article><article><span>PASSED</span><strong class="good" id="dbSnapshotPassed">0</strong></article><article><span>FAILED</span><strong class="bad" id="dbSnapshotFailed">0</strong></article><article><span>REVIEW SIGNALS</span><strong class="warn" id="dbSnapshotSignals">0</strong></article><article><span>DURATION</span><strong id="dbSnapshotDuration">—</strong></article></div>
+            <div class="audit-results" id="dbSnapshotResults"><div class="audit-empty"><span>DB</span><b>No health snapshot yet</b><p>Select a database and depth. Checks run sequentially using fixed read-only diagnostics.</p></div></div>
+          </article>
+          <article class="panel postgres-bottleneck-panel oracle-intelligence-panel performance-section" id="performanceOracleIntelligenceSection">
+            <div class="postgres-bottleneck-head oracle-intelligence-head">
+              <div><p>ORACLE BOTTLENECK INTELLIGENCE</p><h2>Trace application latency from database pressure to the exact plan line</h2><span>Correlates live sessions, wait classes, blockers, SQL impact, actual versus estimated rows, child cursors, PGA/temp, datafile latency, redo/undo, parallel execution, RAC and alert evidence. Add a SQL_ID only when you want statement-level proof.</span></div>
+              <div class="postgres-bottleneck-actions"><span id="oracleBottleneckState"><i></i>READY</span><button type="button" class="text-button" id="copyOracleBottleneckAnalysis">Copy report</button><button type="button" class="primary" id="runOracleBottleneck">Analyze Oracle</button></div>
+            </div>
+            <div class="oracle-license-banner">
+              <div><span>LICENSE-SAFE COLLECTION</span><b>Core fixed views are the default</b><small>Pack-only checks are never queried until you explicitly select a licensed scope. Selection records intent; it does not verify your Oracle contract.</small></div>
+              <label><span>EVIDENCE SCOPE</span><select id="oraclePackScope"><option value="core" selected>Core views only · no pack</option><option value="diagnostics">Diagnostics licensed · add ASH/AWR</option><option value="tuning">Diagnostics + Tuning licensed · add SQL Monitor</option></select></label>
+              <div class="oracle-license-lanes"><span class="active">CORE · 27</span><span>DIAGNOSTICS · 2</span><span>TUNING · 1</span></div>
+            </div>
+            <div class="postgres-scope-bar oracle-scope-bar">
+              <div><span>ANALYSIS SCOPE</span><b>Database-wide triage with optional exact SQL_ID focus</b><small>The collector does not execute application SQL. Runtime row-source statistics appear only when Oracle already captured them.</small></div>
+              <label><span>OPTIONAL SQL_ID</span><input id="oracleBottleneckSqlId" maxlength="13" autocomplete="off" placeholder="8m5j1t2y4n6p9"></label>
+              <button type="button" class="text-button" id="useOracleSelectedSql">Use selected statement</button>
+              <div class="postgres-scope-safety"><i>RO</i><p><b>Evidence only</b><span>No kill, flush, snapshot, advisor, profile, baseline, statistics, memory, plan or object change.</span></p></div>
+            </div>
+            <div class="postgres-analysis-path">
+              <div class="postgres-path-step" data-oracle-phase="collect"><b>01</b><span>Collect context<small>30 license-aware read-only checks</small></span></div>
+              <i></i><div class="postgres-path-step" data-oracle-phase="classify"><b>02</b><span>Waiting or working?<small>Sessions, waits, CPU and blockers</small></span></div>
+              <i></i><div class="postgres-path-step" data-oracle-phase="rank"><b>03</b><span>Correlate causes<small>SQL, plan, memory, I/O and redo</small></span></div>
+              <i></i><div class="postgres-path-step" data-oracle-phase="verify"><b>04</b><span>Verify safely<small>Interval, cursor and plan-line proof</small></span></div>
+            </div>
+            <div class="postgres-bottleneck-progress"><div><i id="oracleBottleneckProgress"></i></div><span id="oracleBottleneckProgressText">Ready · uses the Oracle connection saved in SQL Studio</span></div>
+            <div class="postgres-bottleneck-kpis">
+              <article class="postgres-primary-kpi"><span>PRIMARY BOTTLENECK</span><strong id="oraclePrimaryBottleneck">Not analyzed</strong><small id="oraclePrimaryEvidence">Run during the slow application period for the strongest evidence.</small></article>
+              <article><span>PRESSURE SCORE</span><strong id="oraclePressureScore">—</strong><small>0 low · 100 severe</small></article>
+              <article><span>WORKLOAD MODE</span><strong id="oracleWorkloadMode">—</strong><small>Blocked, waiting, CPU or working</small></article>
+              <article><span>CRITICAL / HIGH</span><strong class="warn" id="oraclePriorityCount">0</strong><small>Ranked findings</small></article>
+              <article><span>CHECKS COMPLETE</span><strong id="oracleChecksComplete">0 / 30</strong><small id="oracleChecksNote">License-aware</small></article>
+            </div>
+            <section class="postgres-pressure-section oracle-pressure-section" aria-label="Oracle pressure map">
+              <header><div><span>BOTTLENECK PRESSURE MAP</span><b>Strongest correlated signals across the Oracle request path</b></div><em id="oracleScopeBadge">WHOLE DATABASE · CORE</em></header>
+              <div class="postgres-pressure-layout">
+                <div class="postgres-pressure-map" id="oraclePressureMap"><p>Run analysis to rank SQL and plans, concurrency, CPU and memory, I/O and temp, redo and undo, RAC and reliability.</p></div>
+                <aside id="oracleSnapshotContext"><span>HOW TO READ THIS</span><b>Live + interval + cumulative evidence</b><p>Sessions and blockers are live. Many wait, SQL, redo and library-cache counters are cumulative; run again during the same incident to confirm rates.</p></aside>
+              </div>
+            </section>
+            <div class="postgres-bottleneck-workspace">
+              <section class="postgres-findings-column">
+                <header><div><span>RANKED FINDINGS</span><b>Symptom → cause → measured evidence → verification → safe action</b></div><em id="oracleFindingCount">0 findings</em></header>
+                <div class="postgres-findings" id="oracleBottleneckFindings"><div class="postgres-empty"><span>ORA</span><b>No Oracle evidence collected</b><p>Connect in SQL Studio and run the scan while the application query or service is slow.</p></div></div>
+              </section>
+              <aside class="postgres-evidence-column">
+                <section class="postgres-cause-chain"><header><span>CAUSE CHAIN</span><b id="oracleCauseTitle">Waiting for evidence</b></header><div id="oracleCauseChain"><div><i>1</i><p><b>Symptom</b><span>Application latency or throughput loss</span></p></div><div><i>2</i><p><b>Resource signal</b><span>Block, wait, CPU, I/O, memory or plan</span></p></div><div><i>3</i><p><b>Probable cause</b><span>Confirmed by correlated Oracle evidence</span></p></div><div><i>4</i><p><b>Safe verification</b><span>Cursor, plan line and interval delta</span></p></div></div></section>
+                <section class="postgres-check-evidence"><header><span>EVIDENCE CHECKS</span><b id="oracleEvidenceSummary">0 completed</b></header><div id="oracleEvidenceChecks"><p>Each core or licensed check succeeds, skips or fails independently.</p></div></section>
+              </aside>
+            </div>
+            <div class="postgres-technique-head"><div><span>ADVANCED ORACLE TECHNIQUE MAP</span><b>Choose a deeper test only after its signal is visible</b></div><em>NO AUTOMATIC CHANGES</em></div>
+            <div class="postgres-technique-grid oracle-technique-grid">
+              <article><i>DBT</i><b>DB time model</b><p>Separate DB CPU from non-idle waits over the same interval. Attribute load by service, module, action and SQL_ID before tuning.</p></article>
+              <article><i>SQL</i><b>SQL impact</b><p>Rank total elapsed impact and per-execution CPU, buffer gets, disk reads and rows. A slow statement and a high-load statement are not always the same.</p></article>
+              <article><i>A/E</i><b>Cardinality proof</b><p>Find the first plan line where actual rows diverge from estimates. Review skew, correlations, expressions, binds and partition statistics there.</p></article>
+              <article><i>CUR</i><b>Cursor variance</b><p>Compare plan hashes and child sharing flags. Bind metadata is collected without values; shared-pool flush is never a diagnostic fix.</p></article>
+              <article><i>MEM</i><b>PGA &amp; temp spill</b><p>Correlate temp consumers, workarea modes, over-allocation and plan row volume. PGA demand multiplies by operation, worker and concurrency.</p></article>
+              <article><i>IO</i><b>I/O attribution</b><p>Combine interval User I/O waits, datafile latency, hot segments and focused SQL reads with host/storage data from the same window.</p></article>
+              <article><i>TX</i><b>Redo &amp; undo</b><p>Measure commits, redo bytes, log file sync, undo generation and retention. Preserve transaction correctness and durability.</p></article>
+              <article><i>PX</i><b>Parallel execution</b><p>Compare requested and allocated servers, downgrades, CPU, temp and elapsed benefit before changing DOP or server limits.</p></article>
+              <article><i>RAC</i><b>Cache Fusion</b><p>Attribute gc waits to SQL, objects, instances and services; distinguish hot blocks from interconnect or placement pressure.</p></article>
+              <article><i>ASH</i><b>ASH / AWR history</b><p>Use only with Diagnostics Pack entitlement. Align samples and snapshot deltas to the incident; DBridge never creates an AWR snapshot.</p></article>
+              <article><i>MON</i><b>SQL Monitor</b><p>Use only with Tuning Pack entitlement. Compare live plan-line time, I/O, waits and PX allocation for qualifying executions.</p></article>
+              <article><i>Δ</i><b>Repeatable interval</b><p>Capture two snapshots without a startup reset; compare rates and application percentiles before and after any controlled test.</p></article>
+            </div>
+            <footer class="postgres-research-basis oracle-research-basis"><span>OFFICIAL ORACLE RESEARCH BASIS</span><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/tgdba/index.html" target="_blank" rel="noopener">Tuning guide</a><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-SQLSTATS.html" target="_blank" rel="noopener">V$SQLSTATS</a><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/refrn/V-SQL_PLAN_STATISTICS_ALL.html" target="_blank" rel="noopener">Plan statistics</a><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/DBMS_XPLAN.html" target="_blank" rel="noopener">DBMS_XPLAN</a><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/dblic/Licensing-Information.html" target="_blank" rel="noopener">Licensing</a><a href="https://blogs.oracle.com/database/database-performance-tuning" target="_blank" rel="noopener">Oracle performance blog</a></footer>
+          </article>
+          <article class="panel postgres-bottleneck-panel performance-section" id="performancePostgresSection">
+            <div class="postgres-bottleneck-head">
+              <div><p>POSTGRESQL BOTTLENECK INTELLIGENCE</p><h2>Find the bottleneck, its cause, and the safest next test</h2><span>Correlates live waits with query impact, relation I/O, transaction age, vacuum and freeze health, WAL, checkpoints, replication slots, archive health, plan variance, and diagnostic capability.</span></div>
+              <div class="postgres-bottleneck-actions"><span id="postgresBottleneckState"><i></i>READY</span><button type="button" class="text-button" id="copyPostgresAnalysis">Copy report</button><button type="button" class="primary" id="runPostgresBottleneck">Analyze bottlenecks</button></div>
+            </div>
+            <div class="postgres-scope-bar">
+              <div><span>ANALYSIS SCOPE</span><b>Database-wide triage with optional exact query focus</b><small>queryid is matched inside pg_stat_statements. It is not guaranteed to remain stable across major PostgreSQL versions.</small></div>
+              <label><span>OPTIONAL QUERYID</span><input id="postgresQueryId" inputmode="numeric" maxlength="21" autocomplete="off" placeholder="-1234567890123456789"></label>
+              <button type="button" class="text-button" id="usePostgresSelectedQuery">Use selected statement</button>
+              <div class="postgres-scope-safety"><i>RO</i><p><b>Evidence only</b><span>No reset, cancel, DDL, VACUUM, ANALYZE, extension, or setting change.</span></p></div>
+            </div>
+            <div class="postgres-analysis-path">
+              <div class="postgres-path-step" data-postgres-phase="collect"><b>01</b><span>Collect evidence<small>26 version-aware read-only checks</small></span></div>
+              <i></i><div class="postgres-path-step" data-postgres-phase="classify"><b>02</b><span>Waiting or working?<small>Locks, I/O, CPU and sessions</small></span></div>
+              <i></i><div class="postgres-path-step" data-postgres-phase="rank"><b>03</b><span>Rank causes<small>Evidence, impact and confidence</small></span></div>
+              <i></i><div class="postgres-path-step" data-postgres-phase="verify"><b>04</b><span>Verify safely<small>Plan, interval and repeatable evidence</small></span></div>
+            </div>
+            <div class="postgres-bottleneck-progress"><div><i id="postgresBottleneckProgress"></i></div><span id="postgresBottleneckProgressText">Ready · uses PostgreSQL connection from SQL Studio</span></div>
+            <div class="postgres-bottleneck-kpis">
+              <article class="postgres-primary-kpi"><span>PRIMARY BOTTLENECK</span><strong id="postgresPrimaryBottleneck">Not analyzed</strong><small id="postgresPrimaryEvidence">Run during the slow period for the strongest evidence.</small></article>
+              <article><span>PRESSURE SCORE</span><strong id="postgresPressureScore">—</strong><small>0 low · 100 severe</small></article>
+              <article><span>WORKLOAD MODE</span><strong id="postgresWorkloadMode">—</strong><small>Waiting versus working</small></article>
+              <article><span>CRITICAL / HIGH</span><strong class="warn" id="postgresPriorityCount">0</strong><small>Ranked findings</small></article>
+              <article><span>CHECKS COMPLETE</span><strong id="postgresChecksComplete">0 / 26</strong><small id="postgresChecksNote">Version-aware</small></article>
+            </div>
+            <section class="postgres-pressure-section" aria-label="PostgreSQL pressure map">
+              <header><div><span>BOTTLENECK PRESSURE MAP</span><b>Strongest correlated signals by resource domain</b></div><em id="postgresScopeBadge">WHOLE DATABASE</em></header>
+              <div class="postgres-pressure-layout">
+                <div class="postgres-pressure-map" id="postgresPressureMap"><p>Run analysis to rank SQL, locks, I/O, vacuum, WAL, replication, memory, and connection pressure.</p></div>
+                <aside id="postgresSnapshotContext"><span>HOW TO READ THIS</span><b>Live + cumulative evidence</b><p>Waits and blockers are live. Most pg_stat counters are cumulative, so confirm rates with two snapshots before changing configuration.</p></aside>
+              </div>
+            </section>
+            <div class="postgres-bottleneck-workspace">
+              <section class="postgres-findings-column">
+                <header><div><span>RANKED FINDINGS</span><b>Bottleneck → cause → evidence → verification → action</b></div><em id="postgresFindingCount">0 findings</em></header>
+                <div class="postgres-findings" id="postgresBottleneckFindings"><div class="postgres-empty"><span>PG</span><b>No PostgreSQL evidence collected</b><p>Connect in SQL Studio, select PostgreSQL, and run this scan while the application query is slow.</p></div></div>
+              </section>
+              <aside class="postgres-evidence-column">
+                <section class="postgres-cause-chain"><header><span>CAUSE CHAIN</span><b id="postgresCauseTitle">Waiting for evidence</b></header><div id="postgresCauseChain"><div><i>1</i><p><b>Symptom</b><span>Application query latency</span></p></div><div><i>2</i><p><b>Resource signal</b><span>Waits, CPU, I/O, locks or memory</span></p></div><div><i>3</i><p><b>Probable cause</b><span>Confirmed from correlated checks</span></p></div><div><i>4</i><p><b>Safe verification</b><span>Plan and repeatable evidence</span></p></div></div></section>
+                <section class="postgres-check-evidence"><header><span>EVIDENCE CHECKS</span><b id="postgresEvidenceSummary">0 completed</b></header><div id="postgresEvidenceChecks"><p>Each check succeeds, skips or fails independently.</p></div></section>
+              </aside>
+            </div>
+            <div class="postgres-technique-head"><div><span>ADVANCED TECHNIQUE MAP</span><b>Choose a technique only after its signal is visible</b></div><em>NO AUTOMATIC CHANGES</em></div>
+            <div class="postgres-technique-grid">
+              <article><i>EST</i><b>Cardinality &amp; skew</b><p>Compare estimated/actual rows; use targeted column statistics or dependency/MCV extended statistics for correlated predicates.</p></article>
+              <article><i>MEM</i><b>Sort &amp; hash spill</b><p>Inspect disk sort and hash batches. Test <code>SET LOCAL work_mem</code>; memory multiplies per node, worker, and session.</p></article>
+              <article><i>IDX</i><b>Access-path design</b><p>Verify sargability and selectivity before composite, partial, expression, BRIN, GIN, or INCLUDE index candidates.</p></article>
+              <article><i>VAC</i><b>Vacuum &amp; visibility</b><p>Correlate churn, dead tuples, analyze age, index-only heap fetches, and old snapshots; tune maintenance per table.</p></article>
+              <article><i>XID</i><b>Freeze horizon</b><p>Track relation and TOAST XID age against the configured forced-vacuum limit; never disable anti-wraparound protection.</p></article>
+              <article><i>VAR</i><b>Plan variance</b><p>Compare selective and non-selective parameters; distinguish generic/custom plan behavior from intermittent waits.</p></article>
+              <article><i>IO</i><b>I/O attribution</b><p>Join EXPLAIN BUFFERS with relation I/O, pg_stat_io, and OS iostat/vmstat from the same incident window.</p></article>
+              <article><i>WAL</i><b>WAL &amp; checkpoints</b><p>Use interval deltas for WAL bytes, full buffers, requested checkpoints, archive failure, write time, and sync time.</p></article>
+              <article><i>RPL</i><b>Replication &amp; slots</b><p>Separate sender, transport, flush, replay, archive, and retained-WAL pressure before changing durability or retention.</p></article>
+              <article><i>HOT</i><b>Write amplification</b><p>Review update volume, HOT ratio, indexed columns, fillfactor, WAL, and index cost as one write-path diagnosis.</p></article>
+              <article><i>Δ</i><b>Interval evidence</b><p>Capture two snapshots with the same stats-reset boundary; compare calls/sec, latency, reads, temp, WAL, and checkpoint rates.</p></article>
+              <article><i>VAL</i><b>Safe validation</b><p>Start with non-executing EXPLAIN. ANALYZE executes SQL; prove correctness and compare p50/p95/p99 plus side effects.</p></article>
+            </div>
+            <footer class="postgres-research-basis"><span>OFFICIAL RESEARCH BASIS</span><a href="https://www.postgresql.org/docs/current/using-explain.html" target="_blank" rel="noopener">EXPLAIN</a><a href="https://www.postgresql.org/docs/current/monitoring-stats.html" target="_blank" rel="noopener">Statistics</a><a href="https://www.postgresql.org/docs/current/pgstatstatements.html" target="_blank" rel="noopener">pg_stat_statements</a><a href="https://www.postgresql.org/docs/current/planner-stats.html" target="_blank" rel="noopener">Planner statistics</a><a href="https://www.postgresql.org/docs/current/routine-vacuuming.html" target="_blank" rel="noopener">Vacuum &amp; freeze</a><a href="https://www.postgresql.org/docs/current/indexes.html" target="_blank" rel="noopener">Indexes</a><a href="https://www.postgresql.org/docs/current/runtime-config-replication.html" target="_blank" rel="noopener">Replication</a></footer>
+          </article>
+          <article class="panel postgres-bottleneck-panel mongo-bottleneck-panel performance-section" id="performanceMongoSection">
+            <div class="postgres-bottleneck-head mongo-bottleneck-head">
+              <div><p>MONGODB PERFORMANCE INTELLIGENCE</p><h2>Trace query latency through operations, queues, cache, replication and shards</h2><span>Direct-driver evidence from the remote server. Correlates live operations with connection admission, locks, WiredTiger, checkpoints, transactions, replica lag, oplog headroom, query shapes, indexes, plans, sharding and the server log buffer.</span></div>
+              <div class="postgres-bottleneck-actions"><span id="mongoBottleneckState"><i></i>READY</span><button type="button" class="text-button" id="copyMongoAnalysis">Copy findings</button><button type="button" class="primary" id="runMongoBottleneck">Analyze MongoDB</button></div>
+            </div>
+            <div class="postgres-scope-bar mongo-scope-bar">
+              <div><span>ANALYSIS SCOPE</span><b>Server-wide evidence with optional operation and collection focus</b><small>Operation focus matches opid, command.comment, or appName. Collection focus adds node-local index and plan-cache evidence.</small></div>
+              <label><span>OPID / COMMENT / APP</span><input id="mongoOperationId" maxlength="128" autocomplete="off" placeholder="checkout-api or 12345"></label>
+              <label><span>OPTIONAL COLLECTION</span><input id="mongoCollection" maxlength="255" autocomplete="off" placeholder="orders"></label>
+              <div class="postgres-scope-safety"><i>RO</i><p><b>Evidence only</b><span>No profiler change, killOp, executionStats, cache clear, index, query setting, balancer, or topology change.</span></p></div>
+            </div>
+            <div class="postgres-analysis-path">
+              <div class="postgres-path-step" data-mongo-phase="collect"><b>01</b><span>Capability probe<small>Topology, role, tier and permissions</small></span></div>
+              <i></i><div class="postgres-path-step" data-mongo-phase="classify"><b>02</b><span>Waiting or working?<small>Operations, queues, locks and flow control</small></span></div>
+              <i></i><div class="postgres-path-step" data-mongo-phase="rank"><b>03</b><span>Correlate pressure<small>Cache, storage, replica and query shapes</small></span></div>
+              <i></i><div class="postgres-path-step" data-mongo-phase="verify"><b>04</b><span>Verify safely<small>Two snapshots and queryPlanner first</small></span></div>
+            </div>
+            <div class="postgres-bottleneck-progress"><div><i id="mongoBottleneckProgress"></i></div><span id="mongoBottleneckProgressText">Ready · uses the MongoDB connection saved in SQL Studio</span></div>
+            <div class="postgres-bottleneck-kpis mongo-bottleneck-kpis">
+              <article class="postgres-primary-kpi"><span>PRIMARY BOTTLENECK</span><strong id="mongoPrimaryBottleneck">Not analyzed</strong><small id="mongoPrimaryEvidence">Run during the slow period for the strongest evidence.</small></article>
+              <article><span>PRESSURE SCORE</span><strong id="mongoPressureScore">—</strong><small>0 low · 100 severe</small></article>
+              <article><span>WORKLOAD MODE</span><strong id="mongoWorkloadMode">—</strong><small>Waiting versus inefficient work</small></article>
+              <article><span>CRITICAL / HIGH</span><strong class="warn" id="mongoPriorityCount">0</strong><small>Ranked findings</small></article>
+              <article><span>CHECKS COMPLETE</span><strong id="mongoChecksComplete">0 / 19</strong><small id="mongoChecksNote">Capability-aware</small></article>
+            </div>
+            <section class="postgres-pressure-section mongo-pressure-section" aria-label="MongoDB pressure map">
+              <header><div><span>RESOURCE PRESSURE MAP</span><b>Strongest correlated signals across the request path</b></div><em id="mongoScopeBadge">WHOLE SERVER</em></header>
+              <div class="postgres-pressure-layout">
+                <div class="postgres-pressure-map" id="mongoPressureMap"><p>Run analysis to rank queries, concurrency, cache and I/O, replication, sharding, and reliability pressure.</p></div>
+                <aside id="mongoSnapshotContext"><span>HOW TO READ THIS</span><b>Live + cumulative evidence</b><p>$currentOp is live. Most serverStatus, index, profiler and query-shape counters need a second snapshot and a stable restart boundary before tuning.</p></aside>
+              </div>
+            </section>
+            <div class="postgres-bottleneck-workspace">
+              <section class="postgres-findings-column">
+                <header><div><span>RANKED FINDINGS</span><b>Bottleneck → probable cause → measured evidence → safe verification</b></div><em id="mongoFindingCount">0 findings</em></header>
+                <div class="postgres-findings" id="mongoBottleneckFindings"><div class="postgres-empty"><span>MDB</span><b>No MongoDB evidence collected</b><p>Connect directly in SQL Studio and run the scan while the application operation is slow.</p></div></div>
+              </section>
+              <aside class="postgres-evidence-column">
+                <section class="postgres-cause-chain"><header><span>CAUSE CHAIN</span><b id="mongoCauseTitle">Waiting for evidence</b></header><div id="mongoCauseChain"><div><i>1</i><p><b>Symptom</b><span>Application operation latency</span></p></div><div><i>2</i><p><b>Resource signal</b><span>Queue, lock, cache, disk or replica</span></p></div><div><i>3</i><p><b>Probable cause</b><span>Confirmed by correlated evidence</span></p></div><div><i>4</i><p><b>Safe verification</b><span>Second snapshot and queryPlanner</span></p></div></div></section>
+                <section class="postgres-check-evidence"><header><span>EVIDENCE CHECKS</span><b id="mongoEvidenceSummary">0 completed</b></header><div id="mongoEvidenceChecks"><p>Every capability succeeds, skips or fails independently.</p></div></section>
+              </aside>
+            </div>
+            <div class="postgres-technique-head"><div><span>ADVANCED MONGODB TECHNIQUE MAP</span><b>Choose a deeper test only after its signal is visible</b></div><em>NO AUTOMATIC CHANGES</em></div>
+            <div class="postgres-technique-grid mongo-technique-grid">
+              <article><i>OP</i><b>Live operation chain</b><p>Rank $currentOp by runtime, lock/flow wait, namespace, appName, comment, planSummary and yield behavior.</p></article>
+              <article><i>QS</i><b>Query-shape cost</b><p>When available, rank $queryStats by total, average, maximum, variability, examined/returned and planning cost.</p></article>
+              <article><i>EXP</i><b>Safe plan review</b><p>Start with queryPlanner. executionStats runs the operation and can change cache state, so it requires explicit approval and maxTimeMS.</p></article>
+              <article><i>ESR</i><b>Index &amp; sort design</b><p>Validate equality-sort-range order, selectivity, bounds, multikey fan-out, projection and response size.</p></article>
+              <article><i>WT</i><b>WiredTiger pressure</b><p>Correlate cache and dirty fill with disk reads, application eviction, checkpoint time, op latency and OS storage metrics.</p></article>
+              <article><i>TX</i><b>Transaction retention</b><p>Find old or idle transactions holding locks and cache history; compare abort deltas and retry behavior.</p></article>
+              <article><i>RPL</i><b>Replica lag tree</b><p>Separate network, sync source, storage, cache and oplog-apply causes; compare lag with the oplog window.</p></article>
+              <article><i>SH</i><b>Shard targeting</b><p>Measure hosts targeted, per-shard imbalance, hot chunks, migrations, orphan data and common queries missing the shard key.</p></article>
+              <article><i>Δ</i><b>Interval evidence</b><p>Sample every 5–15 seconds, detect restart by uptime/counter rollback, then derive operation, latency, lock and eviction rates.</p></article>
+              <article><i>LOG</i><b>Remote log correlation</b><p>getLog reads the newest server RAM-buffer events. Use structured component, event id and context fields; full mongod.log still needs server access.</p></article>
+            </div>
+            <footer class="postgres-research-basis mongo-research-basis"><span>OFFICIAL RESEARCH BASIS</span><a href="https://www.mongodb.com/docs/manual/reference/command/serverstatus/" target="_blank" rel="noopener">serverStatus</a><a href="https://www.mongodb.com/docs/manual/reference/operator/aggregation/currentop/" target="_blank" rel="noopener">$currentOp</a><a href="https://www.mongodb.com/docs/manual/reference/explain-results/" target="_blank" rel="noopener">Explain</a><a href="https://www.mongodb.com/docs/manual/reference/operator/aggregation/querystats/" target="_blank" rel="noopener">$queryStats</a><a href="https://www.mongodb.com/docs/manual/troubleshooting/replication-lag/" target="_blank" rel="noopener">Replication lag</a><a href="https://www.mongodb.com/docs/manual/reference/command/getlog/" target="_blank" rel="noopener">Remote log buffer</a></footer>
+          </article>
+          <article class="panel performance-engine-fallback performance-section" id="performanceEngineFallbackSection">
+            <div class="performance-fallback-hero">
+              <div><span>ENGINE INTELLIGENCE</span><h2 id="performanceFallbackTitle">MySQL guided performance analysis</h2><p id="performanceFallbackDescription">Use the coordinated health snapshot, statement identifier evidence and ten fixed engine checks to narrow the bottleneck safely.</p></div>
+              <em id="performanceFallbackBadge">10 READ-ONLY CHECKS</em>
+            </div>
+            <div class="performance-fallback-path">
+              <article><i>01</i><div><b>Capture engine health</b><p>Active work, waits, locks, I/O, memory and replication.</p></div><button type="button" id="runPerformanceFallbackHealth">Run health snapshot</button></article>
+              <article><i>02</i><div><b>Focus the statement</b><p id="performanceFallbackIdentifier">Add a statement digest to inspect its workload evidence.</p></div><button type="button" id="openPerformanceFallbackStatement">Open SQL Evidence</button></article>
+              <article><i>03</i><div><b>Verify one signal</b><p>Run one allowlisted diagnostic and review its raw evidence.</p></div><button type="button" id="openPerformanceFallbackChecks">Open guided checks</button></article>
+            </div>
+            <div class="performance-fallback-checks"><header><span>AVAILABLE ENGINE CHECKS</span><b id="performanceFallbackCheckCount">10 checks</b></header><div id="performanceFallbackChecks"></div></div>
+            <footer><span>RO</span><p><b>Recommendations only.</b> DBridge does not force plans, kill sessions, clear caches, create indexes or change database configuration.</p></footer>
+          </article>
+          <article class="panel oracle-xray-panel performance-section" id="performanceOracleSection">
+            <div class="panel-title"><div><p class="oracle-xray-kicker">APPLICATION QUERY PERFORMANCE</p><h2>Oracle SQL_ID Investigation Sequence</h2><p>Run the complete SQL X-Ray sequence from history and ASH through plans, binds, waits, parallel execution and I/O latency.</p></div><div class="oracle-xray-title-badges"><span>22 STEPS</span><em>READ ONLY</em></div></div>
+            <div class="oracle-xray-controls"><label>ORACLE SQL_ID<input id="oracleXrayIdentifier" value="8m5j1t2y4n6p9" maxlength="13" autocomplete="off" placeholder="13-character SQL_ID"></label><label>PER-STEP TIMEOUT<select id="oracleXrayTimeout"><option value="30000">30 seconds</option><option value="45000">45 seconds</option><option value="60000" selected>60 seconds</option></select></label><div class="oracle-xray-connection"><span>CONNECTION</span><b>Oracle credentials from SQL Studio</b><small id="oracleXrayTarget">localhost:1521 / ORCL</small></div><button class="text-button" id="clearOracleXray">Clear</button><button class="secondary" id="stopOracleXray" disabled>Stop after current</button><button class="primary" id="runOracleXray">Run all 22 checks</button></div>
+            <div class="oracle-xray-progress"><div><i id="oracleXrayProgress"></i></div><span id="oracleXrayProgressText">Ready · enter an Oracle SQL_ID</span></div>
+            <div class="oracle-xray-summary"><article><span>APPLICATION SCORE</span><strong id="oracleXrayScore">—</strong><small id="oracleXrayScoreNote">No evidence yet</small></article><article><span>COMPLETED</span><strong id="oracleXrayCompleted">0 / 22</strong><small>Sequential checks</small></article><article><span>PRIORITY SIGNALS</span><strong class="warn" id="oracleXraySignals">0</strong><small>Evidence requiring review</small></article><article><span>UNAVAILABLE</span><strong id="oracleXrayUnavailable">0</strong><small>Privilege, license or version</small></article><article><span>DURATION</span><strong id="oracleXrayDuration">—</strong><small>Current investigation</small></article><article><span>STATUS</span><strong id="oracleXrayStatus">READY</strong><small id="oracleXrayStatusNote">Waiting to start</small></article></div>
+            <div class="oracle-xray-tabs" id="oracleXraySteps"><button type="button" class="active"><i></i><span>HISTORY</span><small>PENDING</small></button></div>
+            <div class="oracle-xray-workspace"><aside class="oracle-xray-diagnosis"><header><span>SEQUENCE DIAGNOSIS</span><b id="oracleXrayDiagnosisStatus">Not analyzed</b></header><div id="oracleXrayDiagnosis"><div class="oracle-xray-empty"><span>SQL</span><b>Application performance evidence</b><p>The sequence will rank workload, runtime, optimizer, cursor, parallel, storage and correlation findings while every completed step remains selectable.</p></div></div></aside><section class="oracle-xray-evidence"><header><div><span id="oracleXraySelectedPhase">WORKLOAD</span><b id="oracleXraySelectedLabel">History</b><small id="oracleXraySelectedSource">AWR · Diagnostics Pack</small></div><button class="text-button" id="copyOracleXrayOutput">Copy output</button></header><pre id="oracleXrayOutput">Run the sequence or choose a completed step. Output stays local in this browser session.</pre><footer><span>!</span><p><b>Oracle licensing:</b> Deep X-Ray follows the Evidence Scope selected in Oracle Bottleneck Intelligence above. Pack-only steps are skipped before querying unless the matching Diagnostics or Tuning scope is explicitly selected.</p></footer></section></div>
+          </article>
+          <article class="panel tuning-workbench performance-section" id="performanceChecksSection">
+            <div class="panel-title"><div><h2>Guided tuning workbench</h2><p>Fixed diagnostic queries only — no write operations or free-form commands</p></div><span class="safe-query-badge">READ ONLY</span></div>
+            <div class="tuning-control-bar"><label>DATABASE ENGINE<select id="tuningEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option></select></label><div><span>PERFORMANCE CHECK</span><div class="tuning-checks" id="tuningChecks"></div></div><button class="primary" id="runTuningCheck">Run live check</button></div>
+            <div class="tuning-results">
+              <div class="tuning-stat-grid"><article><span>RUN TIME</span><strong id="tuningDuration">—</strong><small>Client round trip</small></article><article><span>RESULT LINES</span><strong id="tuningRows">—</strong><small>Live diagnostic rows</small></article><article><span>REVIEW SIGNALS</span><strong id="tuningSignals">—</strong><small>Wait, block or error keywords</small></article><article><span>ASSESSMENT</span><strong id="tuningAssessment">Not run</strong><small id="tuningAssessmentNote">Run a check to populate</small></article></div>
+              <div class="signal-chart"><div class="signal-chart-title"><div><b>Live signal profile</b><span id="tuningGuidance">Choose a database and guided check.</span></div><em id="tuningCheckStatus">READY</em></div><div class="signal-row"><span>Runtime</span><div><i id="runtimeBar"></i></div><b id="runtimeValue">0 ms</b></div><div class="signal-row"><span>Output</span><div><i id="outputBar"></i></div><b id="outputValue">0 lines</b></div><div class="signal-row"><span>Review</span><div><i class="amber" id="reviewBar"></i></div><b id="reviewValue">0 signals</b></div></div>
+            </div>
+            <div class="tuning-output-head"><span>LIVE CHECK OUTPUT</span><button class="text-button" id="copyTuningOutput">Copy</button></div><pre class="tuning-output" id="tuningOutput">Select a guided check. Connection settings are reused from SQL Studio.</pre>
+          </article>
+          <article class="panel oracle-trace-lab performance-section" id="performanceTraceSection">
+            <div class="panel-title"><div><h2>Oracle Trace Lab</h2><p>Analyze optimizer and SQL traces from browser memory, or run the approved TKPROF client</p></div><div class="oracle-trace-tabs"><button class="active" type="button" data-oracle-trace-mode="memory">10053 / 10046 analyzer</button><button type="button" data-oracle-trace-mode="tkprof">TKPROF</button></div></div>
+            <section id="oracleMemoryPanel">
+              <div class="oracle-memory-toolbar"><label class="oracle-trace-import" for="oracleTraceFile"><input id="oracleTraceFile" type="file" accept=".trc,.trace,.txt,.log"><span>IMPORT TRACE</span><div><b id="oracleTraceFileName">Choose Oracle .trc file</b><small id="oracleTraceFileMeta">Up to 6 MB · processed in local memory</small></div><em>Browse</em></label><div class="oracle-memory-actions"><button class="text-button" id="loadTraceSample">Load example markers</button><button class="text-button" id="clearOracleTrace">Clear</button><button class="primary" id="analyzeOracleTrace">Analyze in memory</button></div></div>
+              <textarea class="oracle-trace-input" id="oracleTraceText" spellcheck="false" placeholder="Paste Oracle 10053 optimizer trace or 10046 SQL trace content here…"></textarea>
+              <div class="oracle-trace-summary"><article><span>TRACE TYPE</span><strong id="oracleTraceType">Not analyzed</strong><small id="oracleTraceVersion">Oracle version not detected</small></article><article><span>SQL / CURSORS</span><strong id="oracleTraceSql">0</strong><small>SQL IDs and cursor identifiers</small></article><article><span>OPTIMIZER DECISIONS</span><strong id="oracleTraceDecisions">0</strong><small>Paths, join orders and costs</small></article><article><span>CALLS / WAITS</span><strong id="oracleTraceCalls">0</strong><small>Parse, execute, fetch and wait lines</small></article><article><span>WARNINGS</span><strong class="warning" id="oracleTraceWarnings">0</strong><small>ORA, warning and error lines</small></article></div>
+              <div class="oracle-analysis-head"><div><span class="oracle-analysis-state" id="oracleAnalysisState"><i></i>READY</span><b id="oracleAnalysisSource">Paste or import a trace to begin</b></div><div><button id="copyOracleAnalysis">Copy summary</button><button id="copyOracleSql">Copy SQL</button></div></div>
+              <div class="oracle-analysis-output" id="oracleTraceAnalysis"><div class="oracle-analysis-empty"><span>10053</span><b>Optimizer trace intelligence</b><p>DBridge detects optimizer parameters, query blocks, transformations, access paths, join orders, cost decisions, outline hints, cursor calls and wait events.</p></div></div>
+            </section>
+            <section class="hidden" id="tkprofPanel">
+              <div class="tkprof-form"><label>ORACLE TRACE FILE PATH<input id="tkprofPath" placeholder="C:\oracle\diag\rdbms\...\session_ora_1234.trc"></label><label>SORT BY<select id="tkprofSort"><option value="exeela">Execute elapsed time</option><option value="execpu">Execute CPU</option><option value="exedsk">Execute disk reads</option><option value="exequery">Execute consistent reads</option><option value="exerow">Execute rows</option><option value="fchela">Fetch elapsed time</option><option value="fchrow">Fetch rows</option><option value="prsela">Parse elapsed time</option></select></label><label>STATEMENT LIMIT<select id="tkprofPrint"><option value="0">All statements</option><option value="50">Top 50</option><option value="100" selected>Top 100</option><option value="500">Top 500</option></select></label><div class="tkprof-options"><label><input id="tkprofAggregate" type="checkbox" checked> Aggregate cursors</label><label><input id="tkprofWaits" type="checkbox" checked> Include waits</label><label><input id="tkprofSys" type="checkbox"> Include recursive SYS SQL</label></div><button class="primary" id="runTkprof">Run TKPROF</button></div>
+              <div class="tkprof-safety"><span>R/O</span><p><b>Guarded local execution</b>Uses only the company-approved <code>tkprof</code> executable. The source trace is read-only and the temporary report is removed after loading into this page.</p></div>
+              <div class="oracle-trace-summary tkprof-summary"><article><span>STATEMENTS</span><strong id="tkprofStatements">—</strong><small>Detected report statements</small></article><article><span>SQL IDS</span><strong id="tkprofSqlIds">—</strong><small>Unique identifiers</small></article><article><span>REPORT SIZE</span><strong id="tkprofSize">—</strong><small>Loaded into memory</small></article><article><span>DURATION</span><strong id="tkprofDuration">—</strong><small>Local TKPROF run time</small></article><article><span>STATUS</span><strong id="tkprofStatus">Ready</strong><small>Oracle client from PATH</small></article></div>
+              <div class="oracle-analysis-head"><div><span class="oracle-analysis-state" id="tkprofRunState"><i></i>READY</span><b id="tkprofSource">Select an accessible server, UNC, or local trace path</b></div><div><input id="tkprofFilter" placeholder="Filter TKPROF report…"><button id="copyTkprof">Copy report</button></div></div>
+              <pre class="tkprof-output" id="tkprofOutput">TKPROF output will appear here. DBridge does not install Oracle software or bypass trace-file permissions.</pre>
+            </section>
+          </article>
+          <article class="panel diagnostic-form performance-section" id="performanceStatementSection">
+            <div class="panel-title"><div><h2>Statement identifier analyzer</h2><p>Uses the SQL Studio connection settings.</p></div></div>
+            <div class="diagnostic-fields"><label>ENGINE<select id="perfEngine"><option value="oracle">Oracle SQL_ID</option><option value="postgres">PostgreSQL queryid</option><option value="mongodb">MongoDB op/comment</option><option value="mysql">MySQL digest</option><option value="sqlserver">SQL Server query hash</option></select></label><label>IDENTIFIER<input id="sqlIdentifier" value="8m5j1t2y4n6p9" placeholder="SQL_ID, queryid, digest or query hash"></label><label>TIMEOUT<select id="perfTimeout"><option value="30000">30 seconds</option><option value="45000" selected>45 seconds</option><option value="60000">60 seconds</option></select></label><div class="diagnostic-actions"><button class="secondary" id="diagnoseSql">Raw diagnosis</button><button class="primary" id="recommendSql">Get recommendations <b>→</b></button></div></div>
+          </article>
+          <div class="diagnostic-cards" id="diagnosticCards"><article><span>ELAPSED</span><strong>—</strong><small>Waiting for diagnosis</small></article><article><span>CPU / I/O</span><strong>—</strong><small>Live database statistics</small></article><article><span>EXECUTIONS</span><strong>—</strong><small>Plan and workload context</small></article><article><span>RISK</span><strong class="neutral">Unknown</strong><small>No live result yet</small></article></div>
+          <article class="panel diagnostic-output" id="performanceRawOutputSection"><div class="panel-title"><div><h2>Analysis output</h2><p>Raw diagnostic data and recommendations</p></div><button class="text-button" id="copyDiagnosis">Copy</button></div><pre id="performanceOutput">Select an engine and enter a statement identifier to begin.</pre></article>
+          <article class="panel sql-recommendation-panel" id="performanceRecommendationSection">
+            <div class="panel-title"><div><h2>SQL identifier recommendations</h2><p>Ranked from live workload evidence, with a reason and safe next action</p></div><div class="recommendation-title-actions"><span class="evidence-badge">FIXED READ-ONLY QUERY</span><button class="text-button" id="copyRecommendations">Copy report</button></div></div>
+            <div class="recommendation-summary"><article class="critical"><span>CRITICAL</span><strong id="recommendationCritical">0</strong><small>Immediate review</small></article><article class="high"><span>HIGH</span><strong id="recommendationHigh">0</strong><small>Priority findings</small></article><article class="medium"><span>MEDIUM</span><strong id="recommendationMedium">0</strong><small>Investigate</small></article><article class="info"><span>INFO</span><strong id="recommendationInfo">0</strong><small>Context & validation</small></article></div>
+            <div class="sql-recommendation-results" id="sqlRecommendationResults"><div class="recommendation-empty"><span>SQL_ID</span><div><b>No evidence analyzed yet</b><p>Enter a statement identifier and choose Get recommendations. DBridge will not make database changes.</p></div></div></div>
+            <div class="recommendation-footnote"><span>!</span><p><b>Recommendation, not automatic remediation.</b> Threshold findings are a starting point. Confirm the execution plan, waits, workload window and business SLA before applying any SQL, index, plan or configuration change.</p></div>
+          </article>
+          <article class="panel recommendations" id="performanceChecklistSection"><div class="panel-title"><div><h2>Performance checklist</h2><p>Review before changing a plan.</p></div></div><div class="check-grid"><div><span>1</span><p><b>Compare elapsed vs CPU</b>High elapsed with low CPU usually points to waits or I/O.</p></div><div><span>2</span><p><b>Check plan stability</b>Compare plan hash and recent execution history.</p></div><div><span>3</span><p><b>Review logical reads</b>Buffer gets per returned row exposes inefficient access.</p></div><div><span>4</span><p><b>Validate safely</b>Test indexes or rewrites in a non-production environment.</p></div></div></article>
+        </div>
+      </section>
+
+      <section class="view" id="investigation-view">
+        <div class="investigation-hero">
+          <div><p>INCIDENT INVESTIGATION CENTER</p><h1>From slow SQL to the change that caused it.</h1><span>Visualize plans, compare regressions, validate access, correlate database evidence with deployments, and export a sanitized incident package—all locally.</span></div>
+          <div class="investigation-hero-actions"><button class="secondary" id="exportEvidenceJson">Export JSON</button><button class="primary" id="exportEvidenceHtml">Export evidence report</button></div>
+          <div class="investigation-pulse">
+            <article><span>PLAN HEALTH</span><strong id="investigationRisk">—</strong><small>Current analysis</small></article>
+            <article><span>BASELINES</span><strong id="investigationBaselines">0</strong><small>Saved locally</small></article>
+            <article><span>TIMELINE</span><strong id="investigationEvents">0</strong><small>Correlated events</small></article>
+            <article><span>ADAPTERS READY</span><strong id="investigationAdapters">—</strong><small>Approved clients</small></article>
+          </div>
+        </div>
+        <div class="investigation-flow"><div><span>1</span><b>Capture</b><small>Plan + permissions</small></div><i>→</i><div><span>2</span><b>Compare</b><small>Good vs slow</small></div><i>→</i><div><span>3</span><b>Correlate</b><small>DB + delivery events</small></div><i>→</i><div><span>4</span><b>Decide</b><small>Evidence package</small></div></div>
+        <div class="investigation-tabs" role="tablist"><button class="active" data-investigation-tab="flight">Flight recorder</button><button data-investigation-tab="plan">Visual plan</button><button data-investigation-tab="regression">Plan regression</button><button data-investigation-tab="timeline">Incident timeline</button><button data-investigation-tab="controls">Rules & adapters</button></div>
+
+        <div class="investigation-section active" id="investigation-flight-panel">
+          <article class="panel flight-recorder-panel">
+            <div class="panel-title"><div><h2>SQL Performance Flight Recorder</h2><p>Sample live latency, sessions, waits, throughput, reads, and errors into browser memory</p></div><div class="flight-state" id="flightState"><i></i>STOPPED</div></div>
+            <div class="flight-controls"><label>ENGINE<select id="flightEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option></select></label><label>INTERVAL<select id="flightInterval"><option value="5">5 seconds</option><option value="10" selected>10 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option></select></label><label>RECORDING NAME<input id="flightName" maxlength="100" placeholder="Before API release"></label><div class="flight-actions"><button class="secondary" id="stopFlight" disabled>Stop</button><button class="secondary" id="saveFlight" disabled>Save summary</button><button class="primary" id="startFlight">Start recording</button></div></div>
+            <div class="flight-metrics"><article><span>AVG LATENCY</span><strong id="flightLatency">—</strong><small>Milliseconds per execution</small></article><article><span>ACTIVE</span><strong id="flightActive">0</strong><small>Active database work</small></article><article><span>WAITING</span><strong id="flightWaiters">0</strong><small>Non-idle or lock waits</small></article><article><span>READ RATE</span><strong id="flightReads">0/s</strong><small>Logical + physical delta</small></article><article><span>SAMPLES</span><strong id="flightSamples">0</strong><small>Maximum 720</small></article></div>
+            <div class="flight-chart-wrap"><div class="flight-chart-head"><div><b>Live signal timeline</b><span id="flightMeta">Waiting for recording</span></div><div><span class="latency">Latency</span><span class="active">Active</span><span class="waits">Waiting</span></div></div><canvas id="flightChart" height="220" aria-label="SQL performance signal chart"></canvas></div>
+            <div class="flight-table-wrap"><table class="flight-table"><thead><tr><th>TIME</th><th>LATENCY</th><th>ACTIVE</th><th>WAITING</th><th>READS / SEC</th><th>THROUGHPUT / SEC</th><th>ERROR DELTA</th></tr></thead><tbody id="flightSampleRows"><tr><td colspan="7">Start a recording to collect live samples.</td></tr></tbody></table></div>
+          </article>
+
+          <div class="flight-tools-grid">
+            <article class="panel direct-plan-panel"><div class="panel-title"><div><h2>Direct plan & stability capture</h2><p>Retrieve a cached plan or recent plan evidence using the SQL identifier</p></div><span class="safe-query-badge">READ ONLY</span></div><div class="direct-plan-controls"><label>ENGINE<select id="directPlanEngine"><option value="oracle">Oracle SQL_ID</option><option value="postgres">PostgreSQL queryid</option><option value="mongodb">MongoDB op/comment</option><option value="mysql">MySQL digest</option><option value="sqlserver">SQL Server query hash</option></select></label><label>IDENTIFIER<input id="directPlanIdentifier" placeholder="SQL_ID, queryid, digest or hash"></label><button class="secondary" id="capturePlanHistory">Plan history</button><button class="primary" id="captureDirectPlan">Capture visual plan</button></div><div class="plan-history-summary"><article><span>HISTORY ROWS</span><strong id="historyRows">—</strong></article><article><span>PLAN MARKERS</span><strong id="historyPlans">—</strong></article><article><span>SENSITIVITY</span><strong id="historySensitivity">—</strong></article><article><span>WARNINGS</span><strong id="historyWarnings">—</strong></article></div><pre id="planHistoryOutput" class="mini-terminal">Capture plan history to review plan flips, cursor versions, bind sensitivity, Query Store runtimes, or profiler history.</pre></article>
+
+            <article class="panel blocking-map-panel"><div class="panel-title"><div><h2>Wait and blocking map</h2><p>Visual blocker → blocked session → SQL or resource chain</p></div><div class="blocking-actions"><select id="blockingEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB locks</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option></select><button class="primary" id="captureBlockingMap">Capture map</button></div></div><div class="blocking-map" id="blockingMap"><div class="blocking-empty"><span>WAIT</span><b>No blocking snapshot captured</b><p>The map never terminates or modifies sessions.</p></div></div></article>
+
+            <article class="panel index-advisor-panel"><div class="panel-title"><div><h2>Index candidate advisor</h2><p>Score read benefit, write cost, and validation requirements from the visual plan</p></div><button class="primary" id="runIndexAdvisor">Analyze current plan</button></div><div class="index-advice" id="indexAdvice"><div class="blocking-empty"><span>IDX</span><b>No index candidates evaluated</b><p>Analyze an execution plan first. DBridge never creates an index automatically.</p></div></div></article>
+          </div>
+
+          <article class="panel workload-compare-panel"><div class="panel-title"><div><h2>Workload window comparison</h2><p>Compare saved before/after recordings and calculate a deployment health gate</p></div><button class="primary" id="compareRecordings">Compare windows</button></div><div class="workload-compare-controls"><label>BASELINE RECORDING<select id="recordingBefore"><option value="">Select saved baseline</option></select></label><span>→</span><label>AFTER / RELEASE RECORDING<select id="recordingAfter"><option value="">Select changed window</option></select></label></div><div class="workload-delta"><article><span>HEALTH GATE</span><strong id="workloadGate">—</strong><small id="workloadGateNote">Select two recordings</small></article><article><span>LATENCY</span><strong id="workloadLatencyDelta">—</strong><small>Average change</small></article><article><span>WAITS</span><strong id="workloadWaitDelta">—</strong><small>Average change</small></article><article><span>READ RATE</span><strong id="workloadReadDelta">—</strong><small>Average change</small></article><article><span>ERRORS</span><strong id="workloadErrorDelta">—</strong><small>Total change</small></article></div><div class="recording-list" id="recordingList"><div class="baseline-empty">No saved flight recordings yet.</div></div></article>
+        </div>
+
+        <div class="investigation-section" id="investigation-plan-panel">
+          <article class="panel adapter-readiness-panel"><div class="panel-title"><div><h2>Database and warehouse adapters</h2><p>Approved local clients only; unavailable adapters remain disabled until supplied by company IT</p></div><button class="text-button" id="refreshAdapters">Refresh readiness</button></div><div class="adapter-grid" id="adapterGrid"><div class="adapter-skeleton"></div><div class="adapter-skeleton"></div><div class="adapter-skeleton"></div></div></article>
+          <article class="panel connection-validator"><div class="validator-copy"><span>ACCESS GATE</span><div><h2>Connection and permission validator</h2><p>Uses the connection currently entered in SQL Studio and runs one fixed read-only identity/diagnostic check.</p></div></div><div class="validator-target"><span>CURRENT ADAPTER</span><b id="validationAdapterName">Oracle</b><small id="validationStatus">Not checked</small></div><button class="primary" id="validateConnection">Validate access</button><div class="validation-results" id="connectionValidation"><div><i></i><span>CLIENT</span><b>Waiting</b></div><div><i></i><span>AUTH</span><b>Waiting</b></div><div><i></i><span>DIAGNOSTICS</span><b>Waiting</b></div></div></article>
+          <div class="plan-workspace">
+            <article class="panel plan-input-panel"><div class="panel-title"><div><h2>Execution plan intake</h2><p>Paste or import DBMS_XPLAN, EXPLAIN JSON/text, SQL Server XML, or MongoDB executionStats</p></div><span class="browser-memory-badge">BROWSER MEMORY</span></div><div class="plan-input-controls"><label>ENGINE<select id="planEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL / MariaDB</option><option value="sqlserver">SQL Server / Synapse</option><option value="snowflake">Snowflake</option><option value="bigquery">BigQuery</option><option value="databricks">Databricks</option><option value="db2">Db2</option><option value="hana">SAP HANA</option><option value="clickhouse">ClickHouse</option><option value="teradata">Teradata</option></select></label><label>IDENTIFIER / LABEL<input id="planIdentifier" placeholder="SQL_ID, queryid, digest or incident label"></label><label class="plan-file">IMPORT PLAN<input id="planFile" type="file" accept=".txt,.plan,.json,.xml,.sqlplan,.log"><span>Browse</span></label><button class="text-button" id="loadPlanSample">Load example</button><button class="primary" id="analyzePlan">Analyze visual plan</button></div><textarea id="planText" class="plan-text-input" spellcheck="false" placeholder="Paste an execution plan here…"></textarea></article>
+            <article class="panel plan-findings-panel"><div class="panel-title"><div><h2>Plan findings</h2><p>Evidence-ranked operator and cardinality signals</p></div><button class="text-button" id="copyPlanFindings">Copy</button></div><div class="plan-findings" id="planFindings"><div class="plan-empty"><span>◎</span><b>No plan analyzed</b><p>Analysis stays in browser memory until you explicitly save a summary baseline.</p></div></div><div class="save-baseline"><input id="baselineName" maxlength="100" placeholder="Baseline name, e.g. Good plan before release"><button class="secondary" id="savePlanBaseline" disabled>Save summary baseline</button></div></article>
+          </div>
+          <div class="plan-metrics"><article><span>HEALTH SCORE</span><strong id="planScore">—</strong><small>Higher is better</small></article><article><span>OPERATORS</span><strong id="planOperators">0</strong><small>Parsed plan nodes</small></article><article><span>MAX COST</span><strong id="planCost">0</strong><small>Optimizer estimate</small></article><article><span>ROWS</span><strong id="planRows">0</strong><small>Largest row source</small></article><article><span>WARNINGS</span><strong id="planWarnings">0</strong><small>Review signals</small></article></div>
+          <article class="panel plan-visual-panel"><div class="panel-title"><div><h2>Operator flow</h2><p>Indentation shows plan depth; bars compare relative cost and row volume</p></div><div class="plan-legend"><span class="critical">Critical</span><span class="warning">Review</span><span class="normal">Normal</span></div></div><div class="plan-visual" id="planVisual"><div class="plan-visual-empty"><span>PLAN</span><b>Your operator flow will appear here</b><p>Supports JSON, XML, table plans, and indented EXPLAIN text.</p></div></div></article>
+        </div>
+
+        <div class="investigation-section" id="investigation-regression-panel">
+          <article class="panel regression-input"><div class="panel-title"><div><h2>Good plan versus changed plan</h2><p>Compare operators, costs, rows, warnings, and fingerprints with red/green evidence</p></div><div class="regression-actions"><select id="regressionEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option><option value="generic">Other / generic</option></select><button class="primary" id="comparePlans">Compare plans</button></div></div><div class="regression-pair"><label><span class="plan-stage good">GOOD / BASELINE</span><input id="regressionBeforeFile" type="file" accept=".txt,.plan,.json,.xml,.sqlplan"><textarea id="regressionBefore" placeholder="Paste the known-good plan…"></textarea></label><label><span class="plan-stage changed">CHANGED / SLOW</span><input id="regressionAfterFile" type="file" accept=".txt,.plan,.json,.xml,.sqlplan"><textarea id="regressionAfter" placeholder="Paste the changed or slow plan…"></textarea></label></div></article>
+          <div class="regression-summary"><article><span>SCORE CHANGE</span><strong id="regressionScoreDelta">—</strong><small>Changed minus baseline</small></article><article><span>NEW OPERATORS</span><strong class="bad" id="regressionAdded">0</strong><small>Introduced in changed plan</small></article><article><span>REMOVED</span><strong class="good" id="regressionRemoved">0</strong><small>No longer present</small></article><article><span>REGRESSIONS</span><strong class="warn" id="regressionSignals">0</strong><small>Cost, rows, or risk increased</small></article></div>
+          <article class="panel plan-regression-output"><div class="regression-column-head"><span>STATUS</span><span>BASELINE OPERATOR</span><span>CHANGED OPERATOR</span><span>EVIDENCE DELTA</span></div><div id="planRegressionOutput"><div class="regression-empty"><span>±</span><b>Compare two plans to reveal the regression</b><p>Added and worsened operators appear in red; removed or improved operators appear in green.</p></div></div></article>
+          <article class="panel baseline-panel"><div class="panel-title"><div><h2>Saved performance baselines</h2><p>Only plan summaries and metrics are stored—never connection credentials</p></div><span class="local-file-badge">LOCAL DATA</span></div><div class="baseline-list" id="baselineList"><div class="baseline-empty">No saved plan baselines yet.</div></div></article>
+        </div>
+
+        <div class="investigation-section" id="investigation-timeline-panel">
+          <article class="panel timeline-capture"><div class="panel-title"><div><h2>Incident event capture</h2><p>Place database evidence beside Git, Kubernetes, container, log, and deployment changes</p></div><div class="timeline-shortcuts"><button class="text-button" id="capturePlanEvent">Add current plan</button><button class="text-button" id="captureDevopsEvent">Add last DevOps result</button></div></div><div class="timeline-form"><label>EVENT TYPE<select id="incidentType"><option value="database">Database</option><option value="deployment">Deployment</option><option value="kubernetes">Kubernetes</option><option value="container">Container</option><option value="git">Git change</option><option value="log">Log alert</option><option value="trace">Trace</option><option value="note">Note</option></select></label><label>OCCURRED AT<input id="incidentTime" type="datetime-local"></label><label>TITLE<input id="incidentTitle" maxlength="160" placeholder="API deployment completed"></label><label>DETAILS<input id="incidentDetails" maxlength="4000" placeholder="Version, namespace, SQL_ID, error, or evidence summary"></label><button class="primary" id="addIncidentEvent">Add to timeline</button></div></article>
+          <div class="timeline-summary"><article><span>DATABASE SIGNALS</span><strong id="timelineDatabase">0</strong><small>Plans, logs and traces</small></article><article><span>DELIVERY CHANGES</span><strong id="timelineDelivery">0</strong><small>Git, deploy, K8s, container</small></article><article><span>CLOSEST CORRELATION</span><strong id="timelineCorrelation">—</strong><small>Time between change and DB event</small></article></div>
+          <article class="panel incident-timeline-panel"><div class="panel-title"><div><h2>Correlated investigation timeline</h2><p>Chronological evidence with change-to-database time distance</p></div><button class="text-button" id="clearTimelineFilter">Show all</button></div><div class="incident-timeline" id="incidentTimeline"><div class="timeline-empty"><span>00:00</span><b>No incident events captured</b><p>Add database and delivery evidence to calculate temporal correlation.</p></div></div></article>
+        </div>
+
+        <div class="investigation-section" id="investigation-controls-panel">
+          <article class="panel rules-panel"><div class="panel-title"><div><h2>Environment-specific tuning thresholds</h2><p>These local rules directly control SQL identifier recommendation severity</p></div><div><button class="text-button" id="resetTuningRules">Reset defaults</button><button class="primary" id="saveTuningRules">Save rules</button></div></div><div class="rules-table-wrap"><table class="rules-table"><thead><tr><th>SIGNAL</th><th>METRIC</th><th>WARNING</th><th>HIGH</th><th>UNIT</th></tr></thead><tbody id="tuningRuleRows"></tbody></table></div></article>
+          <article class="panel adapter-matrix-panel"><div class="panel-title"><div><h2>Adapter coverage matrix</h2><p>Query execution and validation through company-approved local clients</p></div><span class="snapshot-count blue">15 ADAPTERS</span></div><div class="adapter-matrix-wrap"><table class="adapter-matrix"><thead><tr><th>PLATFORM</th><th>FAMILY</th><th>CLIENT</th><th>CAPABILITY</th><th>AUTHENTICATION</th><th>READINESS</th></tr></thead><tbody id="adapterMatrixRows"></tbody></table></div></article>
+          <article class="panel evidence-settings"><div><span>EXPORT SAFETY</span><h2>Evidence package controls</h2><p>The export contains plan summaries, findings, baselines, rules, and timeline events. Database passwords are never part of the workspace.</p></div><label><input id="redactEvidence" type="checkbox" checked> Redact hostnames, IP addresses, emails, and quoted literals</label><label><input id="includeTimelineExport" type="checkbox" checked> Include incident timeline</label><label><input id="includeBaselinesExport" type="checkbox" checked> Include saved baselines</label></article>
+        </div>
+      </section>
+
+      <section class="view" id="logs-view">
+        <div class="page-intro compact log-page-intro"><div><p>DATABASE & WAREHOUSE OBSERVABILITY</p><h1>Live logs, 24-hour findings and trace evidence</h1><span>Read approved server evidence, classify every event by severity, and turn repeated errors into an incident-ready finding without uploading log content.</span></div><div class="mode-pill live"><i></i><span id="coverageCount">40+ sources</span></div></div>
+        <nav class="trace-workspace-tabs" aria-label="Logs and traces tasks">
+          <div><span>CHOOSE A TASK</span><b>Logs &amp; trace tools</b></div>
+          <button type="button" class="active" data-workspace-target="logSourceCatalog"><i>≡</i><span><b>Select source</b><small>Database, DW or platform</small></span></button>
+          <button type="button" data-workspace-target="logInsights24h"><i>24H</i><span><b>Errors & findings</b><small>Severity, signatures and timeline</small></span></button>
+          <button type="button" data-workspace-target="liveLogConsole"><i>▶</i><span><b>Follow live log</b><small>SSH, DB view, file or cloud</small></span></button>
+          <button type="button" data-workspace-target="fileTraceAnalyzer"><i>⌁</i><span><b>Analyze trace file</b><small>Waits, errors and elapsed time</small></span></button>
+          <button type="button" data-workspace-view="performance" data-workspace-target="performanceTraceSection"><i>10053</i><span><b>Oracle Trace Lab</b><small>10053 · 10046 · TKPROF</small></span></button>
+        </nav>
+        <article class="panel source-catalog" id="logSourceCatalog">
+          <div class="catalog-toolbar"><div><h2>Monitoring catalog</h2><p>Database, NoSQL, MPP and cloud data-warehouse presets</p></div><label class="catalog-search">⌕<input id="sourceSearch" placeholder="Search Oracle, Snowflake, Kafka…"></label><select id="sourceGroup"><option value="all">All platforms</option><option value="database">Databases</option><option value="nosql">NoSQL & search</option><option value="warehouse">Data warehouses</option><option value="cloud">Cloud warehouses</option><option value="data">Data platforms</option></select></div>
+          <div class="catalog-grid" id="logSources"></div>
+        </article>
+        <div class="selected-source"><span id="selectedSourceIcon">O</span><div><b id="selectedSourceName">Oracle Database</b><small id="selectedSourceDetails">Alert, listener, audit and trace logs</small></div><em id="selectedSourceMethod">FILE TAIL</em></div>
+        <article class="panel log-intelligence-panel" id="logInsights24h">
+          <header class="log-intelligence-head">
+            <div><span>24-HOUR LOG INTELLIGENCE</span><h2 id="logInsightWindowTitle">Findings from the last 24 hours</h2><p>Timestamp-aware analysis of the evidence currently loaded from the selected server log. Untimestamped lines are clearly marked as capture-window evidence.</p></div>
+            <div class="log-intelligence-actions"><label>TIME WINDOW<select id="logWindowHours"><option value="1">Last 1 hour</option><option value="6">Last 6 hours</option><option value="12">Last 12 hours</option><option value="24" selected>Last 24 hours</option><option value="48">Last 48 hours</option><option value="72">Last 72 hours</option></select></label><button type="button" id="refreshLogInsights">Refresh analysis</button><button type="button" id="copyLogFindings">Copy findings</button></div>
+          </header>
+          <div class="log-intelligence-status"><div><span id="logInsightHealth" class="clear"><i></i>WAITING FOR EVIDENCE</span><b id="logInsightCoverage">No timestamp coverage yet</b></div><small id="logInsightUpdated">Analysis has not run</small></div>
+          <div class="log-intelligence-summary">
+            <article class="total"><span>24H EVENTS</span><strong id="logInsightTotal">0</strong><small>Within selected window</small></article>
+            <article class="critical"><span>CRITICAL</span><strong id="logInsightCritical">0</strong><small>Fatal, panic or severe</small></article>
+            <article class="error"><span>ERRORS</span><strong id="logInsightErrors">0</strong><small>Failures and error codes</small></article>
+            <article class="warning"><span>WARNINGS</span><strong id="logInsightWarnings">0</strong><small>Timeout, slow and retry</small></article>
+            <article class="recovered"><span>RECOVERED</span><strong id="logInsightRecovered">0</strong><small>Resolved or healthy again</small></article>
+            <article class="signature"><span>ERROR SIGNATURES</span><strong id="logInsightSignatures">0</strong><small>Grouped repeated patterns</small></article>
+          </div>
+          <nav class="log-intelligence-tabs" aria-label="24-hour log analysis views">
+            <button type="button" class="active" data-log-insight-tab="findings">Findings <span id="logInsightFindingCount">0</span></button>
+            <button type="button" data-log-insight-tab="errors">Errors <span id="logInsightErrorCount">0</span></button>
+            <button type="button" data-log-insight-tab="warnings">Warnings <span id="logInsightWarningCount">0</span></button>
+            <button type="button" data-log-insight-tab="events">All color-coded events <span id="logInsightEventCount">0</span></button>
+            <div class="log-severity-legend"><span class="critical">Critical</span><span class="error">Error</span><span class="warning">Warning</span><span class="info">Information</span><span class="recovered">Recovered</span></div>
+          </nav>
+          <div class="log-intelligence-view" id="logInsightFindings"><div class="log-intelligence-empty"><span>24H</span><b>No evidence analyzed yet</b><p>Start monitoring a source or load a readable log file. Findings will update automatically.</p></div></div>
+          <div class="log-intelligence-view hidden" id="logInsightErrorsView"><div class="log-intelligence-empty error"><span>ERR</span><b>No error events loaded</b><p>Errors, fatal events, database codes and repeated signatures will appear here in red.</p></div></div>
+          <div class="log-intelligence-view hidden" id="logInsightWarningsView"><div class="log-intelligence-empty warning"><span>WARN</span><b>No warning events loaded</b><p>Timeouts, retries, slow operations and contention signals will appear here in amber.</p></div></div>
+          <div class="log-intelligence-view hidden log-event-list" id="logInsightEvents"><div class="log-intelligence-empty"><span>ALL</span><b>No events loaded</b><p>Every visible event receives a consistent severity color.</p></div></div>
+        </article>
+        <article class="panel log-console" id="liveLogConsole">
+          <div class="access-controls"><label>ACCESS METHOD<select id="logTransport"><option value="ssh" selected>Remote server via SSH key / agent</option><option value="native">Database-native diagnostic view</option><option value="file">Local, UNC or mounted file</option><option value="telemetry">Cloud CLI telemetry</option></select></label><div class="ssh-fields" id="sshFields"><label>SERVER HOST<input id="sshHost" placeholder="db-server.company.net"></label><label>SSH USER<input id="sshUser" placeholder="approved_user"></label><label class="short">PORT<input id="sshPort" value="22"></label><label class="short">SERVER OS<select id="sshOs"><option value="linux">Linux / Unix</option><option value="windows">Windows Server</option></select></label><label>PRIVATE KEY <small>Optional</small><input id="sshKey" placeholder="Uses SSH agent if blank"></label></div><div class="native-access hidden" id="nativeAccess"><span>◆</span><p>Uses the host, database, username and password currently entered in <b>SQL Studio</b>. The database account must have its approved diagnostic-log role.</p></div></div>
+          <div class="file-controls"><label><span id="targetFieldTitle">LOG FILE OR MOUNTED PATH</span><input id="logPath" value="C:\app\oracle\diag\rdbms\orcl\ORCL\trace\alert_ORCL.log"></label><label>POLL INTERVAL<select id="pollInterval"><option value="1000">1 second</option><option value="2000" selected>2 seconds</option><option value="5000">5 seconds</option><option value="10000">10 seconds</option></select></label><button class="primary" id="toggleLog">▶ Start follow</button></div>
+          <div class="source-hint"><span>i</span><p id="sourceHint">Use a local path, UNC share, or mounted server log. DBridge reads appended bytes only.</p><button id="resetSourcePath">Reset default</button></div>
+          <div class="log-detail-strip"><div><span>TOTAL LINES</span><b id="detailLines">0</b></div><div><span>ERROR / FATAL</span><b class="error" id="detailErrors">0</b></div><div><span>WARNINGS</span><b class="warning" id="detailWarnings">0</b></div><div><span>INFO / EVENTS</span><b class="info" id="detailInfo">0</b></div><div><span>LAST UPDATE</span><b id="detailUpdated">—</b></div></div>
+          <div class="console-toolbar"><div><span class="stream-status" id="streamStatus"><i></i>STOPPED</span><b id="logFileName">alert_ORCL.log</b><small id="logMeta">Waiting for file</small></div><div><input id="logFilter" placeholder="Filter visible lines…"><button id="clearLog">Clear</button><button id="copyLog">Copy</button></div></div>
+          <div class="terminal log-color-console" id="logOutput">Choose a log path and select “Start follow”.
+
+DBridge reads only appended bytes and does not lock or modify the source file.</div>
+        </article>
+        <article class="panel trace-panel" id="fileTraceAnalyzer"><div class="panel-title"><div><span class="friendly-step-label">TRACE FILE</span><h2>Analyze a server trace</h2><p>Summarize waits, errors, elapsed markers and file size without modifying the file.</p></div><button type="button" class="text-button" data-workspace-view="performance" data-workspace-target="performanceTraceSection">Open Oracle 10053 / TKPROF →</button></div><div class="trace-controls"><label>TRACE FILE PATH<input id="tracePath" placeholder="C:\oracle\diag\...\trace\session_ora_1234.trc"></label><button class="secondary" id="analyzeTrace">Analyze trace</button></div><div id="traceResults" class="trace-results"><span>No trace analyzed yet.</span></div></article>
+      </section>
+
+      <section class="view" id="devops-view">
+        <div class="page-intro compact"><div><p>DEVOPS HUB</p><h1>Platform operations</h1><span>Use approved local CLIs and their existing sign-in contexts. DBridge never installs tools or sends their output elsewhere.</span></div><button class="secondary" id="scanTools">↻ Scan local tools</button></div>
+        <div class="devops-grid" id="devopsGrid"></div>
+        <article class="panel container-visual-panel">
+          <div class="panel-title"><div><p class="container-visual-kicker">CONTAINER OPERATIONS</p><h2>Kubernetes & Docker Visual Dashboard</h2><p>Review platform health in Read-only mode, or explicitly unlock approved workload and container lifecycle actions in Read-write mode.</p></div><span class="container-readonly" id="containerAccessBadge">LIVE · READ ONLY</span></div>
+          <div class="container-dashboard-toolbar"><div class="container-mode-tabs" role="tablist" aria-label="Container dashboard platform"><button type="button" class="active" data-container-dashboard="kubernetes">K8S CLUSTER</button><button type="button" data-container-dashboard="docker">DOCKER ENGINE</button></div><div class="container-k8s-scope" id="containerKubernetesScope"><label>CONTEXT<input id="containerDashboardContext" placeholder="Active kubeconfig context"></label><label>NAMESPACE<input id="containerDashboardNamespace" placeholder="All namespaces"></label></div><div class="container-dashboard-action"><span id="containerDashboardStatus"><i></i>READY</span><button class="primary" id="refreshContainerDashboard">Refresh visual dashboard</button></div></div>
+          <div class="container-access-bar"><div class="container-access-copy"><span id="containerAccessIcon">RO</span><p><b id="containerAccessTitle">Read-only mode</b><small id="containerAccessDescription">Fixed health and inventory commands only. No workload or container state can be changed.</small></p></div><div class="container-access-toggle" role="group" aria-label="Container dashboard access mode"><button type="button" class="active" data-container-access="read">READ ONLY</button><button type="button" data-container-access="write">READ / WRITE</button></div></div>
+          <div class="container-write-panel hidden" id="containerWritePanel"><div class="container-write-head"><div><span>ADVANCED CHANGE CONTROL</span><h3 id="containerWriteTitle">Kubernetes operational action</h3><p id="containerWriteGuidance">Preview the exact allowlisted command and verify permissions before applying a change.</p></div><em>PRECHECK + CONFIRMATION</em></div><div class="container-write-controls"><label>OPERATION<select id="containerWriteAction"></select></label><label id="containerWriteTargetField">TARGET<input id="containerWriteTarget" list="containerWriteTargets" autocomplete="off" placeholder="Deployment or pod name"><datalist id="containerWriteTargets"></datalist></label><label class="container-write-value hidden" id="containerWriteValueField">REPLICAS<input id="containerWriteValue" type="number" min="0" max="1000" value="1"></label><label>CHANGE REFERENCE <small>Optional</small><input id="containerChangeReference" autocomplete="off" maxlength="100" placeholder="CHG-12345 or incident reference"></label><button class="container-preview-button" id="previewContainerWriteAction">Preview & preflight</button><button class="container-change-button" id="applyContainerWriteAction">Review & apply</button></div><div class="container-write-safety"><span>!</span><p id="containerWriteSafety">Kubernetes changes require a specific namespace and your existing kubeconfig permissions. DBridge cannot bypass RBAC.</p><label class="container-autolock"><input id="containerAutoLock" type="checkbox" checked><b>Auto-lock after success</b></label></div><div class="container-preflight" id="containerPreflight"><div><span>PREVIEW & PERMISSION CHECK</span><b id="containerPreflightStatus">NOT RUN</b></div><pre id="containerPreflightOutput">Choose an action and run Preview & preflight.</pre></div><pre class="container-write-output" id="containerWriteOutput">No change has been executed in this session.</pre><section class="container-audit"><header><div><span>LOCAL CHANGE AUDIT</span><h3>Recent Kubernetes and Docker actions</h3></div><button id="refreshContainerAudit">Refresh history</button></header><div class="container-audit-list" id="containerAuditList"><div class="container-audit-empty">No local change records loaded.</div></div><footer><span id="containerAuditCount">0 records</span><small>Sanitized history is stored only in the DBridge portable data folder.</small></footer></section></div>
+          <div class="container-dashboard-summary"><article><span>PLATFORM HEALTH</span><strong id="containerPlatformHealth">NOT RUN</strong><small id="containerPlatformHealthNote">Waiting for live evidence</small></article><article><span id="containerObjectLabel">WORKLOADS</span><strong id="containerObjectCount">—</strong><small id="containerObjectNote">Pods, deployments, services</small></article><article><span>RUNNING / READY</span><strong id="containerReadyCount">—</strong><small id="containerReadyNote">Healthy objects</small></article><article><span>WARNING SIGNALS</span><strong id="containerWarningCount">—</strong><small>Failures, restarts and events</small></article><article><span>CPU PRESSURE</span><strong id="containerCpuPressure">—</strong><small>Current visible utilization</small></article><article><span>MEMORY PRESSURE</span><strong id="containerMemoryPressure">—</strong><small>Current visible utilization</small></article></div>
+          <div class="container-dashboard-meta"><div><i></i><b id="containerDashboardScope">Kubernetes · active context · all namespaces</b></div><span id="containerDashboardUpdated">No snapshot captured</span></div>
+          <div class="container-visual-body" id="containerVisualBody"><div class="container-visual-empty"><span>K8S</span><h3>Visual infrastructure evidence is ready</h3><p>Choose Kubernetes or Docker, confirm the approved context, and refresh. Read-only is always the default; operational changes require an explicit Read-write unlock and confirmation.</p></div></div>
+        </article>
+        <article class="panel devops-intelligence-panel">
+          <div class="panel-title"><div><h2>Release & Platform Intelligence</h2><p>Correlate delivery changes with SQL performance, topology, pipeline, configuration, and Kafka evidence</p></div><span class="intelligence-badge">LOCAL EVIDENCE GATES</span></div>
+          <div class="intelligence-summary"><article><span>DEPLOYMENT GATE</span><strong id="deploymentGateStatus">NOT RUN</strong><small id="deploymentGateNote">Compare performance windows</small></article><article><span>K8S OBJECTS</span><strong id="topologyObjects">—</strong><small>Deployments, pods, services</small></article><article><span>PIPELINE CHANGES</span><strong id="pipelineChangeCount">—</strong><small>Against saved run baseline</small></article><article><span>KAFKA TOTAL LAG</span><strong id="kafkaLagTotal">—</strong><small>Current consumer snapshot</small></article></div>
+          <div class="intelligence-grid">
+            <section class="intelligence-module deployment-gate-module"><div class="module-head"><span class="module-icon purple">GATE</span><div><h3>Deployment health gate</h3><p>Turn before/after SQL evidence into a release decision.</p></div></div><div class="gate-controls"><select id="gateBefore"><option value="">Baseline recording</option></select><span>→</span><select id="gateAfter"><option value="">After release</option></select><button class="primary" id="evaluateDeploymentGate">Evaluate gate</button></div><div class="gate-result" id="deploymentGateResult"><i></i><div><b>Waiting for evidence</b><p>Save two Flight Recorder windows first.</p></div></div></section>
+
+            <section class="intelligence-module topology-module"><div class="module-head"><span class="module-icon blue">K8S</span><div><h3>Kubernetes topology map</h3><p>Deployment → pod → service ownership and readiness.</p></div></div><div class="module-controls"><input id="topologyContext" placeholder="Optional context"><input id="topologyNamespace" placeholder="Optional namespace"><button class="primary" id="captureTopology">Map topology</button></div><div class="topology-map" id="topologyMap"><div class="module-empty">Run a topology capture using the approved kubectl context.</div></div></section>
+
+            <section class="intelligence-module pipeline-module"><div class="module-head"><span class="module-icon green">CI</span><div><h3>CI/CD pipeline comparison</h3><p>Capture GitHub workflow outcomes and compare with a saved baseline.</p></div></div><div class="module-controls"><input id="pipelineRepository" placeholder="owner/repository (optional)"><button class="secondary" id="savePipelineSnapshot" disabled>Save baseline</button><button class="primary" id="capturePipelineRuns">Capture runs</button></div><div class="pipeline-compare-controls"><select id="pipelineBaseline"><option value="">Saved pipeline baseline</option></select><button id="comparePipelineRuns">Compare current</button></div><div class="pipeline-runs" id="pipelineRuns"><div class="module-empty">Capture recent GitHub workflow runs.</div></div></section>
+
+            <section class="intelligence-module drift-module"><div class="module-head"><span class="module-icon amber">CFG</span><div><h3>Configuration drift detector</h3><p>Compare local manifest fingerprints without storing file contents.</p></div></div><div class="drift-files"><label>BASELINE FILE<input id="driftBaselineFile" type="file"><span id="driftBaselineName">Choose approved baseline</span></label><label>CURRENT FILE<input id="driftCurrentFile" type="file"><span id="driftCurrentName">Choose current configuration</span></label></div><div class="module-controls"><input id="driftBaselineLabel" placeholder="Baseline label"><button class="secondary" id="saveDriftSnapshot">Save fingerprint</button><button class="primary" id="compareConfigurationDrift">Compare drift</button></div><div class="drift-result" id="driftResult"><div class="module-empty">Files remain in browser memory; only optional fingerprints are saved.</div></div></section>
+
+            <section class="intelligence-module kafka-intelligence-module"><div class="module-head"><span class="module-icon dark">KFK</span><div><h3>Kafka consumer lag dashboard</h3><p>Group, topic, partition, offset, and lag evidence.</p></div></div><div class="module-controls"><input id="kafkaLagEndpoint" value="localhost:9092" placeholder="broker:9092"><input id="kafkaLagGroup" placeholder="Optional group"><button class="secondary" id="saveKafkaSnapshot" disabled>Save snapshot</button><button class="primary" id="captureKafkaLag">Capture lag</button></div><div class="kafka-lag-view" id="kafkaLagView"><div class="module-empty">Capture current lag using kafka-consumer-groups.</div></div></section>
+
+            <section class="intelligence-module runbook-module"><div class="module-head"><span class="module-icon red">RUN</span><div><h3>Approved diagnostic runbooks</h3><p>Save and run sequences made only from existing allowlisted actions.</p></div></div><div class="runbook-builder"><input id="runbookName" maxlength="100" placeholder="Runbook name"><select id="runbookTool"><option value="github">GitHub</option><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option><option value="podman">Podman</option><option value="kafka">Kafka</option><option value="terraform">Terraform</option><option value="tofu">OpenTofu</option><option value="helm">Helm</option><option value="ansible">Ansible</option><option value="argocd">Argo CD</option><option value="vault">Vault</option><option value="nomad">Nomad</option><option value="git">Git</option><option value="ssh">SSH</option><option value="aws">AWS</option><option value="azure">Azure</option><option value="gcloud">Google Cloud</option><option value="databricks">Databricks</option><option value="snowflake">Snowflake</option><option value="goldengate">Oracle GoldenGate</option></select><select id="runbookActions" multiple aria-label="Approved runbook actions"></select><button class="primary" id="saveRunbook">Save runbook</button></div><div class="runbook-list" id="runbookList"><div class="module-empty">Create a runbook from approved inspection actions.</div></div><pre class="runbook-output" id="runbookOutput">Runbook output appears here one approved step at a time.</pre></section>
+          </div>
+        </article>
+        <article class="panel ogg-operations-panel">
+          <div class="panel-title"><div><p class="ogg-kicker">ORACLE REPLICATION</p><h2>GoldenGate Operations Center</h2><p>Connect through Admin Client or Classic GGSCI, monitor server logs, and turn lag, checkpoints, ABENDs, and OGG errors into a troubleshooting path.</p></div><span class="ogg-safe-badge">READ-ONLY DIAGNOSTICS</span></div>
+          <div class="ogg-summary"><article><span>CONNECTION</span><strong id="oggConnectionState">NOT CHECKED</strong><small>Admin Client or SSH</small></article><article><span>RUNNING</span><strong id="oggRunning">—</strong><small>Extract / Replicat / services</small></article><article><span>ABENDED</span><strong id="oggAbended">—</strong><small>Critical process state</small></article><article><span>MAX LAG</span><strong id="oggMaxLag">—</strong><small>Detected checkpoint lag</small></article><article><span>OGG / ORA CODES</span><strong id="oggCodes">—</strong><small>Unique error signatures</small></article><article><span>LAST CHECK</span><strong id="oggUpdated">—</strong><small>Local diagnostic time</small></article></div>
+          <div class="ogg-control-grid">
+            <section class="ogg-connect-card"><div class="ogg-section-head"><span>01</span><div><h3>Replication connection</h3><p>Passwords stay in the Oracle wallet; DBridge stores no GoldenGate credential.</p></div></div><div class="ogg-form-grid"><label>ARCHITECTURE<select id="oggArchitecture"><option value="microservices">Microservices · Admin Client</option><option value="classic">Classic · GGSCI over SSH</option></select></label><label>DIAGNOSTIC<select id="oggAction"><option value="overview">Process overview</option><option value="lag">Extract & Replicat lag</option><option value="messages">Error messages</option><option value="extract">Extract detail</option><option value="replicat">Replicat detail</option><option value="checkpoints">Checkpoint history</option><option value="versions">GoldenGate versions</option></select></label><label>PROCESS GROUP<input id="oggGroup" maxlength="128" placeholder="Optional, e.g. EXTORD"></label><label>LIVE INTERVAL<select id="oggDiagnosticInterval"><option value="10">10 seconds</option><option value="30" selected>30 seconds</option><option value="60">60 seconds</option></select></label></div><div class="ogg-ma-fields" id="oggMaFields"><label>ADMINISTRATION SERVICE URL<input id="oggEndpoint" value="https://ogg-server:9001" placeholder="https://ogg-server:9001"></label><label>WALLET CREDENTIAL ALIAS<input id="oggCredential" placeholder="admin"></label><label>DEPLOYMENT (OPTIONAL)<input id="oggDeployment" placeholder="Finance"></label></div><div class="ogg-actions"><button class="secondary" id="oggMonitor">Start live checks</button><button class="primary" id="oggRun">Run diagnostic</button></div><div class="ogg-connection-note"><i></i><p><b id="oggDiagnosticMeta">Ready for an approved connection check</b><span>Microservices uses local Admin Client and its wallet. Classic uses the SSH server fields below.</span></p></div></section>
+            <section class="ogg-server-card"><div class="ogg-section-head"><span>02</span><div><h3>GoldenGate server & logs</h3><p>Read ggserr.log, report, discard, or service logs through trusted SSH.</p></div></div><div class="ogg-ssh-grid"><label>SSH HOST<input id="oggSshHost" placeholder="ogg-server.company.net"></label><label>SSH USER<input id="oggSshUser" placeholder="oggread"></label><label>PORT<input id="oggSshPort" value="22"></label><label>OGG HOME / VAR ROOT<input id="oggHome" value="/u01/app/ogg"></label><label class="wide">OPTIONAL SSH PRIVATE KEY<input id="oggSshKey" placeholder="C:\Users\me\.ssh\id_ed25519"></label></div><div class="ogg-log-picker"><select id="oggLogKind"><option value="error">ggserr.log</option><option value="report">Process report (.rpt)</option><option value="discard">Discard file (.dsc)</option><option value="admin">Administration Service log</option><option value="custom">Custom GoldenGate log path</option></select><input id="oggLogPath" value="/u01/app/ogg/ggserr.log" placeholder="Remote GoldenGate log path"><select id="oggLogInterval"><option value="5">5 sec</option><option value="10" selected>10 sec</option><option value="30">30 sec</option></select></div><div class="ogg-actions"><button class="secondary" id="oggOpenLogs">Open in Log Center</button><button class="primary" id="oggStartLog">Start live log</button></div><div class="ogg-log-stats"><span><b id="oggLogLines">0</b>lines</span><span class="warn"><b id="oggLogWarnings">0</b>warnings</span><span class="bad"><b id="oggLogErrors">0</b>errors</span><em id="oggLogState"><i></i>STOPPED</em></div></section>
+          </div>
+          <div class="ogg-analysis-grid"><section><div class="ogg-subhead"><div><h3>Process topology & health</h3><p>Current Extract, Replicat, Manager, and Microservices state</p></div></div><div class="ogg-process-grid" id="oggProcessGrid"><div class="ogg-empty"><span>OGG</span><b>No process snapshot</b><p>Run Process overview to populate the replication topology.</p></div></div></section><section><div class="ogg-subhead"><div><h3>Troubleshooting recommendations</h3><p>Evidence-first actions; no process is started, stopped, or altered</p></div></div><div class="ogg-findings" id="oggFindings"><div class="ogg-empty"><span>?</span><b>No findings yet</b><p>DBridge will rank ABEND, lag, trail, network, checkpoint, and transaction signals.</p></div></div></section></div>
+          <div class="ogg-terminal-grid"><section><div class="ogg-terminal-head"><div><span class="ogg-terminal-dot"></span><b>GoldenGate diagnostic output</b></div><button id="oggCopyDiagnostic">Copy</button></div><pre id="oggDiagnosticOutput">Choose an architecture and run an approved diagnostic.</pre></section><section><div class="ogg-terminal-head"><div><span class="ogg-terminal-dot live"></span><b>Live GoldenGate server log</b></div><button id="oggCopyLog">Copy</button></div><pre id="oggLogOutput">Enter the approved SSH server and log path, then start live monitoring.</pre></section></div>
+        </article>
+        <article class="panel devops-audit-panel">
+          <div class="panel-title"><div><h2>Full-stack guided audit</h2><p>Run a safe sequence of approved inspections and compare the output with the previous in-memory audit</p></div><span class="snapshot-count blue">20 TOOL PLAYBOOKS</span></div>
+          <div class="snapshot-controls devops-audit-controls"><label>DEVOPS TOOL<select id="devopsAuditTool"><option value="github">GitHub</option><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option><option value="podman">Podman</option><option value="kafka">Kafka</option><option value="terraform">Terraform</option><option value="tofu">OpenTofu</option><option value="helm">Helm</option><option value="ansible">Ansible</option><option value="argocd">Argo CD</option><option value="vault">Vault</option><option value="nomad">Nomad</option><option value="git">Git</option><option value="ssh">SSH</option><option value="aws">AWS</option><option value="azure">Azure</option><option value="gcloud">Google Cloud</option><option value="databricks">Databricks</option><option value="snowflake">Snowflake</option><option value="goldengate">Oracle GoldenGate</option></select></label><label>DEPTH<select id="devopsAuditDepth"><option value="quick">Quick audit</option><option value="full">Full audit</option></select></label><div class="snapshot-connection"><span>CONTEXT</span><b>Uses Guided Inspection fields below</b><small id="devopsAuditContext">GitHub · active CLI context</small></div><button class="text-button" id="copyDevopsAudit">Copy audit</button><button class="secondary" id="stopDevopsAudit" disabled>Stop</button><button class="primary" id="runDevopsAudit">Run guided audit</button></div>
+          <div class="audit-progress"><div><i id="devopsAuditProgress"></i></div><span id="devopsAuditProgressText">Ready · no methods running</span></div>
+          <div class="audit-summary"><article><span>COMPLETED</span><strong id="devopsAuditCompleted">0 / 0</strong></article><article><span>PASSED</span><strong class="good" id="devopsAuditPassed">0</strong></article><article><span>FAILED</span><strong class="bad" id="devopsAuditFailed">0</strong></article><article><span>CHANGED</span><strong class="warn" id="devopsAuditChanged">0</strong></article><article><span>REVIEW SIGNALS</span><strong id="devopsAuditSignals">0</strong></article></div>
+          <div class="audit-results" id="devopsAuditResults"><div class="audit-empty"><span>OPS</span><b>No guided audit yet</b><p>Select a tool and depth. The audit uses the same strict action allowlist as individual inspections.</p></div></div>
+        </article>
+        <article class="panel version-comparison-panel">
+          <div class="panel-title"><div><h2>DevOps version change radar</h2><p>Compare approved local CLI versions with a baseline stored only in your portable data folder</p></div><div class="version-actions"><button class="text-button" id="refreshVersions">Refresh comparison</button><button class="secondary" id="captureVersions">Capture current baseline</button></div></div>
+          <div class="version-summary"><article><span>CHANGED / NEW</span><strong id="versionChanged">—</strong><small>Review before deployment</small></article><article><span>UNCHANGED</span><strong id="versionUnchanged">—</strong><small>Matches saved baseline</small></article><article><span>UNAVAILABLE</span><strong id="versionUnavailable">—</strong><small>Not found in local PATH</small></article><article><span>BASELINE</span><strong id="versionBaselineTime">Not captured</strong><small>Portable local snapshot</small></article></div>
+          <div class="version-table-wrap"><table class="version-table"><thead><tr><th>TOOL</th><th>SAVED BASELINE</th><th>CURRENT VERSION</th><th>CHANGE</th></tr></thead><tbody id="versionComparisonRows"><tr><td colspan="4">Open this panel to scan local tool versions.</td></tr></tbody></table></div>
+        </article>
+        <article class="panel file-compare-panel">
+          <div class="panel-title"><div><h2>Two-file deployment comparison</h2><p>Compare YAML, JSON, Terraform, SQL, scripts and configuration files entirely inside this browser</p></div><span class="local-file-badge">LOCAL FILES · NO UPLOAD</span></div>
+          <div class="file-pair">
+            <label class="file-drop" id="beforeDrop" for="beforeFile"><input id="beforeFile" type="file"><span class="file-stage before">BEFORE</span><div><b id="beforeFileName">Choose baseline file</b><small id="beforeFileMeta">Click or drop the older version here</small></div><em>Browse</em></label>
+            <button class="swap-files" id="swapFiles" type="button" title="Swap before and after files">⇄<span>Swap</span></button>
+            <label class="file-drop" id="afterDrop" for="afterFile"><input id="afterFile" type="file"><span class="file-stage after">AFTER</span><div><b id="afterFileName">Choose changed file</b><small id="afterFileMeta">Click or drop the newer version here</small></div><em>Browse</em></label>
+          </div>
+          <div class="diff-controls"><div class="diff-options"><label><input id="diffIgnoreWhitespace" type="checkbox"> Ignore whitespace</label><label><input id="diffIgnoreCase" type="checkbox"> Ignore letter case</label><label><input id="diffOnlyChanges" type="checkbox" checked> Show changes only</label><label>CONTEXT<select id="diffContext"><option value="1">1 line</option><option value="3" selected>3 lines</option><option value="5">5 lines</option><option value="10">10 lines</option></select></label></div><div class="diff-actions"><button class="text-button" id="clearFileDiff">Clear</button><button class="secondary" id="copyFileDiff" disabled>Copy patch</button><button class="secondary" id="downloadFileDiff" disabled>Download .diff</button><button class="primary" id="compareFiles">Compare files</button></div></div>
+          <div class="diff-summary"><article><span>ADDED</span><strong class="added" id="diffAdded">0</strong></article><article><span>REMOVED</span><strong class="removed" id="diffRemoved">0</strong></article><article><span>UNCHANGED</span><strong id="diffUnchanged">0</strong></article><article><span>CHANGE GROUPS</span><strong id="diffHunks">0</strong></article><div class="diff-result-state"><i id="diffStateDot"></i><p><b id="diffState">Waiting for two files</b><small id="diffStateMeta">Files stay in browser memory</small></p></div></div>
+          <div class="diff-view-head"><div><span class="diff-legend removed">− REMOVED</span><span class="diff-legend added">+ ADDED</span><span class="diff-legend same">UNCHANGED CONTEXT</span></div><label>FILTER CHANGED TEXT<input id="diffSearch" placeholder="Search comparison..."></label></div>
+          <div class="diff-column-head"><span></span><span>OLD</span><span>NEW</span><b id="diffFileHeader">REDLINE COMPARISON</b></div>
+          <div class="file-diff-output" id="fileDiffOutput"><div class="diff-empty"><span>±</span><b>Select a before file and an after file</b><p>Removed lines appear in red with strike-through. Added lines appear in green with underline.</p></div></div>
+        </article>
+        <article class="panel tool-runner">
+          <div class="devops-method-panel"><div><h2>Guided inspection methods</h2><p>Choose a safe read-only method. Only approved arguments are accepted; arbitrary shell commands are disabled.</p></div><div class="devops-methods" id="devopsMethods"></div></div>
+          <div class="devops-context-fields"><label id="secondaryLabel" class="hidden"><span id="secondaryTitle">NAMESPACE / TOPIC</span><input id="devopsSecondary" placeholder="Optional scope"></label><label id="scopeLabel" class="hidden"><span id="scopeTitle">RESOURCE / GROUP</span><input id="devopsScope" placeholder="Optional resource"></label><div class="devops-safety"><span>R/O</span><p><b>Read-only command allowlist</b>DBridge builds commands from these GUI fields and never passes free-form shell text.</p></div></div>
+          <div class="runner-settings"><label>TOOL<select id="devopsTool"><option value="github">GitHub CLI</option><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option><option value="podman">Podman</option><option value="kafka">Kafka</option><option value="terraform">Terraform</option><option value="tofu">OpenTofu</option><option value="helm">Helm</option><option value="ansible">Ansible</option><option value="argocd">Argo CD</option><option value="vault">HashiCorp Vault</option><option value="nomad">HashiCorp Nomad</option><option value="git">Git</option><option value="ssh">SSH Client</option><option value="aws">AWS CLI</option><option value="azure">Azure CLI</option><option value="gcloud">Google Cloud CLI</option><option value="databricks">Databricks CLI</option><option value="snowflake">SnowSQL</option><option value="goldengate">Oracle GoldenGate Admin Client</option></select></label><label>ACTION<select id="devopsAction"></select></label><label id="endpointLabel" class="hidden">TARGET<input id="devopsEndpoint" value=""></label><label id="cwdLabel">WORKING FOLDER<input id="devopsCwd" placeholder="Optional project directory"></label><button class="primary" id="runDevops">Run inspection</button></div>
+          <div class="console-toolbar"><div><span class="stream-status neutral"><i></i>LOCAL COMMAND</span><b id="commandLabel">gh auth status</b></div><button id="copyDevops">Copy output</button></div>
+          <div class="devops-output-tools"><span id="devopsRunMeta">Ready for a guided inspection</span><input id="devopsOutputFilter" placeholder="Filter output lines..."><button id="clearDevops">Clear</button></div>
+          <pre class="terminal devops-output" id="devopsOutput">Select a tool and action, then run the inspection.</pre>
+        </article>
+      </section>
+
+      <section class="view terminal-workspace-view" id="terminal-view">
+        <div class="page-intro compact terminal-page-intro"><div><p>LOCAL TERMINAL / SAFE SESSION MANAGER</p><h1>Tabby-style operations terminal</h1><span>Keep Windows, Git, Kubernetes, Docker, Kafka, cloud and SSH inspections in restored tabs and split panes. Commands are still built from a strict read-only allowlist.</span></div><div class="mode-pill live"><i></i>Local sessions only</div></div>
+        <section class="terminal-command-deck panel" aria-label="Tabby-style operations terminal">
+          <header class="terminal-command-head">
+            <div><span>SESSION WORKSPACE</span><h2>Profiles, tabs and split evidence</h2><p>Choose a profile and approved inspection. Output remains in browser memory and is never sent to a cloud terminal service.</p></div>
+            <div class="terminal-head-actions"><button type="button" id="terminalNewTab">+ New tab</button><button type="button" id="terminalSplit">Split right</button><button type="button" id="terminalCloseTab">Close tab</button></div>
+          </header>
+          <div class="terminal-profile-strip">
+            <label>PROFILE<select id="terminalProfile"><option value="system">DBridge host</option><option value="git">Git repository</option><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option><option value="kafka">Kafka</option><option value="github">GitHub</option><option value="ssh">SSH client</option><option value="terraform">Terraform</option><option value="aws">AWS</option><option value="azure">Azure</option><option value="gcloud">Google Cloud</option><option value="goldengate">GoldenGate</option></select></label>
+            <label>READ-ONLY ACTION<select id="terminalAction"></select></label>
+            <label id="terminalTargetLabel">TARGET<input id="terminalTarget" autocomplete="off" placeholder="Optional approved target"></label>
+            <label id="terminalSecondaryLabel">SECONDARY<input id="terminalSecondary" autocomplete="off" placeholder="Optional namespace / profile"></label>
+            <label id="terminalScopeLabel">RESOURCE<input id="terminalScope" autocomplete="off" placeholder="Optional resource / group"></label>
+            <label>WORKING FOLDER<input id="terminalCwd" autocomplete="off" placeholder="Optional local project folder"></label>
+          </div>
+          <div class="tabby-surface">
+            <header class="tabby-window-bar"><div class="tabby-window-dots"><i></i><i></i><i></i></div><div class="tabby-tabs" id="terminalTabs"></div><button type="button" class="tabby-add" id="terminalTabAdd" title="New terminal tab">+</button></header>
+            <div class="tabby-toolbar"><div><span class="terminal-session-state" id="terminalSessionState"><i></i>READY</span><b id="terminalSessionMeta">One protected local session</b></div><div><label>FIND<input id="terminalSearch" placeholder="Search output"></label><button type="button" id="terminalCopy">Copy</button><button type="button" id="terminalClear">Clear</button></div></div>
+            <div class="tabby-panes" id="terminalPanes"></div>
+            <footer class="tabby-command-bar"><span class="tabby-prompt">›_</span><input id="terminalCommandPreview" readonly aria-label="Approved command preview"><button type="button" class="primary" id="terminalRun">Run inspection</button></footer>
+          </div>
+          <div class="terminal-capability-grid">
+            <article><span>01</span><div><b>Restored terminal tabs</b><p>Profiles, actions and non-secret context return after a browser refresh. Terminal output remains session-only.</p></div></article>
+            <article><span>02</span><div><b>Nested evidence workflow</b><p>Split two profiles side-by-side to compare cluster, container, repository or server context.</p></div></article>
+            <article><span>03</span><div><b>Safe paste boundary</b><p>No arbitrary shell parser, command chaining or hidden script execution is exposed by this workspace.</p></div></article>
+            <article><span>04</span><div><b>Existing company identity</b><p>Approved CLIs use their current login, kubeconfig, SSH agent, wallet and RBAC permissions.</p></div></article>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="security-view">
+        <div class="page-intro compact"><div><p>SECURITY</p><h1>Built for local control</h1><span>DBridge is designed to run without installation, cloud storage, or an inbound network listener.</span></div></div>
+        <section class="security-posture panel" aria-label="Office-safe security posture">
+          <div class="security-posture-score"><span>LOCAL POSTURE</span><strong>A</strong><small>Hardened portable profile</small></div>
+          <div class="security-posture-copy"><span>OFFICE-READY DEFAULTS</span><h2>Security controls are active before the first connection</h2><p>The package is portable and contains no installer. It does not disable antivirus, endpoint protection, RBAC, database permissions, or company policy.</p></div>
+          <div class="security-posture-controls">
+            <span><i></i>Loopback binding</span>
+            <span><i></i>Per-launch API token</span>
+            <span><i></i>Content Security Policy</span>
+            <span><i></i>Command allowlists</span>
+            <span><i></i>Bounded input and output</span>
+            <span><i></i>No saved passwords</span>
+          </div>
+        </section>
+        <div class="security-grid"><article class="panel"><span>◆</span><h2>Loopback only</h2><p>The service binds to <code>127.0.0.1</code>. Other machines cannot connect to it.</p></article><article class="panel"><span>◉</span><h2>Same-origin token</h2><p>API requests require a random token created for the current launch.</p></article><article class="panel"><span>▤</span><h2>Read-only first</h2><p>Mutating SQL is rejected until write mode is explicitly enabled.</p></article><article class="panel"><span>⌁</span><h2>No credential files</h2><p>Passwords remain in memory and are not saved by DBridge.</p></article><article class="panel"><span>≡</span><h2>Bounded file reads</h2><p>Log tails and trace analysis enforce size limits and never modify files.</p></article><article class="panel"><span>◫</span><h2>No auto-installs</h2><p>DevOps actions use tools already approved and available in PATH.</p></article></div>
+        <div class="notice warning"><span>!</span><div><strong>Company policy still applies</strong><p>Use only approved credentials, database accounts, log paths and platform contexts. DBridge does not bypass endpoint security or access controls.</p></div></div>
+      </section>
+    </main>
+  </div>
+  <div class="sidebar-scrim" id="sidebarScrim"></div>
+  <section class="command-palette hidden" id="commandPalette" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
+    <button type="button" class="command-palette-backdrop" id="commandPaletteBackdrop" tabindex="-1" aria-label="Close search"></button>
+    <div class="command-palette-dialog">
+      <header><div><span>QUICK NAVIGATION</span><h2 id="commandPaletteTitle">Where do you want to go?</h2></div><button type="button" id="closeCommandPalette" aria-label="Close search">Esc</button></header>
+      <label class="command-palette-search"><span>Search</span><input id="commandPaletteSearch" autocomplete="off" placeholder="Try SQL_ID, Oracle trace, Kubernetes, live log, terminal..."><kbd>Ctrl K</kbd></label>
+      <div class="command-palette-results" id="commandPaletteResults" role="listbox" aria-label="Matching tools"></div>
+      <footer><span><kbd>Up/Down</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span><small>Navigation only. Search never executes a command.</small></footer>
+    </div>
+  </section>
+  <section class="shortcut-map hidden" id="shortcutMap" role="dialog" aria-modal="true" aria-labelledby="shortcutMapTitle">
+    <button type="button" class="shortcut-map-backdrop" id="shortcutMapBackdrop" tabindex="-1" aria-label="Close keyboard shortcuts"></button>
+    <div class="shortcut-map-dialog">
+      <header><div><span>KEYBOARD</span><h2 id="shortcutMapTitle">Console shortcuts</h2></div><button type="button" id="closeShortcutMap" aria-label="Close keyboard shortcuts">Esc</button></header>
+      <div class="shortcut-map-groups" id="shortcutMapGroups"></div>
+      <footer>Shortcuts only navigate and toggle the interface. None of them execute SQL or a platform change on their own.</footer>
+    </div>
+  </section>
+  <div class="toast" id="toast"></div>
+  <script src="/app.js"></script>
+  <script src="/stack-shell-v3.js"></script>
+</body>
+</html>

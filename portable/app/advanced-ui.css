@@ -1,0 +1,499 @@
+/* Advanced console UI: theme switch, connection profiles, shortcut map,
+   session pulse. Owns light and dark values so it needs no generated override. */
+
+:root {
+  --ui-surface: #ffffff;
+  --ui-surface-soft: #f6f8fc;
+  --ui-raised: #ffffff;
+  --ui-border: #e3e6f0;
+  --ui-border-strong: #d3d8e6;
+  --ui-text: #161b2e;
+  --ui-text-soft: #5c6478;
+  --ui-text-faint: #8790a3;
+  --ui-accent: #5b5bf6;
+  --ui-accent-soft: #eceeff;
+  --ui-accent-text: #4338ca;
+  --ui-good: #0e9f6e;
+  --ui-good-soft: #e5faf1;
+  --ui-warn: #b45309;
+  --ui-warn-soft: #fff4e5;
+  --ui-bad: #e11d48;
+  --ui-bad-soft: #ffecf1;
+  --ui-shadow: 0 18px 44px rgba(16, 22, 40, .16);
+  --ui-shadow-soft: 0 2px 6px rgba(16, 22, 40, .06);
+  --ui-scrim: rgba(12, 17, 30, .52);
+}
+
+html[data-theme="dark"] {
+  --ui-surface: #151922;
+  --ui-surface-soft: #1b2130;
+  --ui-raised: #1e2534;
+  --ui-border: #2b3346;
+  --ui-border-strong: #3a4459;
+  --ui-text: #e7ebf6;
+  --ui-text-soft: #a3adc2;
+  --ui-text-faint: #7c8699;
+  --ui-accent: #8b8bff;
+  --ui-accent-soft: #262a4d;
+  --ui-accent-text: #b3b3ff;
+  --ui-good: #46d99b;
+  --ui-good-soft: #16302a;
+  --ui-warn: #f0a75c;
+  --ui-warn-soft: #33261a;
+  --ui-bad: #ff7a9c;
+  --ui-bad-soft: #3a1f2c;
+  --ui-shadow: 0 20px 50px rgba(0, 0, 0, .6);
+  --ui-shadow-soft: 0 2px 8px rgba(0, 0, 0, .35);
+  --ui-scrim: rgba(4, 7, 14, .7);
+}
+
+html[data-theme="dark"] body {
+  background: #10141d;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Smooth the switch without animating every repaint on the page. */
+html[data-theme-switching] body,
+html[data-theme-switching] .panel,
+html[data-theme-switching] .main > .application-header {
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease;
+}
+
+/* ---------------- header theme switch ---------------- */
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  background: var(--ui-surface-soft);
+}
+
+.theme-switch button {
+  display: grid;
+  width: 30px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-faint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.theme-switch button:hover {
+  color: var(--ui-text);
+  background: var(--ui-accent-soft);
+}
+
+.theme-switch button.active {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-raised);
+  color: var(--ui-accent-text);
+  box-shadow: var(--ui-shadow-soft);
+}
+
+/* ---------------- session pulse ---------------- */
+
+.session-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-surface-soft);
+  color: var(--ui-text-soft);
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.session-pulse i {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ui-text-faint);
+}
+
+.session-pulse.live i {
+  background: var(--ui-good);
+  box-shadow: 0 0 0 3px var(--ui-good-soft);
+}
+
+.session-pulse.busy i {
+  background: var(--ui-warn);
+  box-shadow: 0 0 0 3px var(--ui-warn-soft);
+  animation: sessionPulseBlink 1s ease-in-out infinite;
+}
+
+.session-pulse b {
+  color: var(--ui-text);
+  font-size: 8px;
+}
+
+@keyframes sessionPulseBlink {
+  50% { opacity: .35; }
+}
+
+/* ---------------- connection profiles ---------------- */
+
+.connection-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 9px 0 0;
+  padding: 10px 11px;
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  background: var(--ui-surface-soft);
+}
+
+.connection-profiles-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.connection-profiles-head span {
+  color: var(--ui-accent-text);
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .9px;
+}
+
+.connection-profiles-head small {
+  color: var(--ui-text-faint);
+  font-size: 7px;
+}
+
+.connection-profiles-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+
+.connection-profiles-row select {
+  min-width: 0;
+  height: 31px;
+  padding: 0 8px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 7px;
+  background: var(--ui-raised);
+  color: var(--ui-text);
+  font-size: 9px;
+  outline: 0;
+}
+
+.connection-profiles-row select:focus {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 3px var(--ui-accent-soft);
+}
+
+.connection-profiles-row button {
+  height: 31px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 7px;
+  background: var(--ui-raised);
+  color: var(--ui-text-soft);
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.connection-profiles-row button:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-text);
+  background: var(--ui-accent-soft);
+}
+
+.connection-profiles-row button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.connection-profiles-row button.danger:hover:not(:disabled) {
+  border-color: var(--ui-bad);
+  background: var(--ui-bad-soft);
+  color: var(--ui-bad);
+}
+
+.connection-profiles-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-text-faint);
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.connection-profiles-note i {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--ui-good-soft);
+  color: var(--ui-good);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+/* ---------------- shortcut map overlay ---------------- */
+
+.shortcut-map {
+  position: fixed;
+  z-index: 900;
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+}
+
+.shortcut-map.hidden {
+  display: none;
+}
+
+.shortcut-map-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: var(--ui-scrim);
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+}
+
+.shortcut-map-dialog {
+  position: relative;
+  display: flex;
+  width: min(680px, 100%);
+  max-height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 13px;
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow);
+}
+
+.shortcut-map-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface-soft);
+}
+
+.shortcut-map-dialog header span {
+  color: var(--ui-accent-text);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 1.1px;
+}
+
+.shortcut-map-dialog header h2 {
+  margin: 4px 0 0;
+  color: var(--ui-text);
+  font-size: 13px;
+}
+
+.shortcut-map-dialog header button {
+  height: 27px;
+  padding: 0 10px;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: 7px;
+  background: var(--ui-raised);
+  color: var(--ui-text-soft);
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.shortcut-map-dialog header button:hover {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-text);
+}
+
+.shortcut-map-groups {
+  display: grid;
+  overflow: auto;
+  padding: 13px;
+  gap: 13px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.shortcut-map-group h3 {
+  margin: 0 0 7px;
+  color: var(--ui-text-faint);
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .9px;
+  text-transform: uppercase;
+}
+
+.shortcut-map-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  background: var(--ui-surface-soft);
+  margin-bottom: 5px;
+}
+
+.shortcut-map-item span {
+  color: var(--ui-text-soft);
+  font-size: 8px;
+}
+
+.shortcut-map-item kbd {
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid var(--ui-border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--ui-raised);
+  color: var(--ui-text);
+  font: 700 7px/1 "Segoe UI", Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.shortcut-map-dialog > footer {
+  padding: 10px 17px;
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface-soft);
+  color: var(--ui-text-faint);
+  font-size: 7px;
+}
+
+/* ---------------- command palette additions ---------------- */
+
+.command-result em.command-kind-action {
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-text);
+}
+
+.command-section-label {
+  padding: 8px 12px 4px;
+  color: var(--ui-text-faint);
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ---------------- auto-hiding left panel ---------------- */
+
+/* Collapsed to an icon rail; expands over the workspace on hover or keyboard
+   focus so the content underneath never reflows. */
+@media (min-width: 761px) {
+  html[data-sidebar="auto"] {
+    --sidebar-width: 62px;
+  }
+
+  html[data-sidebar="auto"] .sidebar {
+    width: 62px;
+    padding-right: 9px;
+    padding-left: 9px;
+    transition: width .18s ease, box-shadow .18s ease;
+    overflow: hidden;
+  }
+
+  html[data-sidebar="auto"] .sidebar:hover,
+  html[data-sidebar="auto"] .sidebar:focus-within {
+    width: 276px;
+    padding-right: 16px;
+    padding-left: 16px;
+    box-shadow: 14px 0 46px rgba(8, 12, 22, .38);
+  }
+
+  /* While collapsed, keep only the glyphs. */
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .brand-copy,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .brand > b,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .local-status > div,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .nav-section-label,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .nav-copy,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) nav button kbd,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .side-note,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .sidebar-command span,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .sidebar-command kbd,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .version {
+    display: none;
+  }
+
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .brand,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .local-status,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) nav button,
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .sidebar-command {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) .sidebar-command::after {
+    content: "⌕";
+    font-size: 13px;
+  }
+
+  /* A collapsed rail must still show which workspace is current. */
+  html[data-sidebar="auto"] .sidebar:not(:hover):not(:focus-within) nav button.active {
+    box-shadow: inset 3px 0 var(--ui-accent);
+  }
+}
+
+.sidebar-mode-toggle.active {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-soft);
+  color: var(--ui-accent-text);
+}
+
+/* ---------------- compact density ---------------- */
+
+html[data-density="compact"] .panel {
+  margin-bottom: 8px;
+}
+
+html[data-density="compact"] .metric-grid article {
+  min-height: 62px;
+}
+
+html[data-density="compact"] .main {
+  font-size: 12px;
+}
+
+html[data-density="compact"] .page-intro {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+@media (max-width: 1180px) {
+  .shortcut-map-groups {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .session-pulse {
+    display: none;
+  }
+}

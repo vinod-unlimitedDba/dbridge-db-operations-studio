@@ -1,0 +1,491 @@
+#performance-view {
+  --perf-accent: #5e51f5;
+  --perf-accent-soft: #ebeaff;
+  --perf-accent-rgb: 118, 87, 239;
+}
+
+#performance-view.engine-postgres { --perf-accent: #3489bd; --perf-accent-soft: #eaf7ff; --perf-accent-rgb: 57, 120, 184; }
+#performance-view.engine-mongodb { --perf-accent: #238f4e; --perf-accent-soft: #e5f8ed; --perf-accent-rgb: 39, 139, 91; }
+#performance-view.engine-mysql { --perf-accent: #d65f15; --perf-accent-soft: #ffeddf; --perf-accent-rgb: 207, 118, 28; }
+#performance-view.engine-sqlserver { --perf-accent: #cc3f68; --perf-accent-soft: #ffebf1; --perf-accent-rgb: 199, 68, 90; }
+
+.performance-page-intro { margin-bottom: 11px; }
+.performance-page-intro h1 { max-width: 820px; }
+
+.performance-command-center {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 13px;
+  border: 1px solid #26344b;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #101927 0%, #18263b 52%, #21264d 100%);
+  box-shadow: 0 18px 38px #1a2741;
+  color: #fff;
+}
+.performance-command-center::before {
+  content: "";
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  right: -130px;
+  top: -220px;
+  border: 1px solid rgba(var(--perf-accent-rgb), .28);
+  border-radius: 50%;
+  box-shadow: 0 0 90px rgba(var(--perf-accent-rgb), .13) inset;
+  pointer-events: none;
+}
+
+.performance-command-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 17px 20px 14px;
+  border-bottom: 1px solid #2f3d52;
+}
+.performance-command-head > div:first-child > span,
+.performance-quick-title > span,
+.performance-journey-title > span,
+.performance-connection-state span {
+  color: #8596ac;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .9px;
+}
+.performance-command-head h2 { margin: 5px 0 4px; font-size: 17px; letter-spacing: -.3px; }
+.performance-command-head p { max-width: 720px; margin: 0; color: #9cacbd; font-size: 8px; line-height: 1.55; }
+.performance-connection-state { display: flex; flex: none; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #34445b; border-radius: 9px; background: #0f1826; }
+.performance-connection-state > i { width: 8px; height: 8px; border: 2px solid #1a4f36; border-radius: 50%; background: #41da89; box-shadow: 0 0 0 4px #163b2c; }
+.performance-connection-state b { display: block; max-width: 210px; margin-top: 3px; overflow: hidden; color: #dbe5ef; font: 700 7px Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.performance-connection-state button { height: 28px; padding: 0 9px; border: 1px solid #45556c; border-radius: 6px; background: #243143; color: #b8c7d5; font-size: 7px; font-weight: 800; }
+.performance-connection-state button:hover { border-color: var(--perf-accent); color: #fff; }
+
+.performance-engine-switcher { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; padding: 11px 14px; border-bottom: 1px solid #2f3d52; background: #0d1622; }
+.performance-engine-switcher button { position: relative; display: grid; min-width: 0; min-height: 62px; grid-template-columns: 34px 1fr; align-items: center; gap: 9px; padding: 9px; border: 1px solid #2f3e51; border-radius: 9px; background: #192534; color: #b8c6d3; text-align: left; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.performance-engine-switcher button:hover { transform: translateY(-1px); border-color: #50657d; background: #1f2e3f; }
+.performance-engine-switcher button.active { border-color: var(--perf-accent); background: linear-gradient(140deg, rgba(var(--perf-accent-rgb), .24), #1f2b3b); box-shadow: 0 0 0 2px rgba(var(--perf-accent-rgb), .12); color: #fff; }
+.performance-engine-switcher button > i { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 8px; background: #293648; color: #b9c7d5; font-size: 8px; font-style: normal; font-weight: 900; }
+.performance-engine-switcher button.active > i { background: var(--perf-accent); color: #fff; }
+.performance-engine-switcher b, .performance-engine-switcher small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.performance-engine-switcher b { margin-bottom: 3px; font-size: 8px; }
+.performance-engine-switcher small { color: #7e8fa1; font-size: 6px; }
+.performance-engine-switcher em { position: absolute; right: 7px; top: 6px; color: #5e7083; font-size: 5px; font-style: normal; font-weight: 800; }
+.performance-engine-switcher button.active em { color: #b8b5fa; }
+
+.performance-cockpit { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); }
+.performance-journey { padding: 16px 18px; border-right: 1px solid #2f3d52; }
+.performance-journey-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+.performance-journey-title b { color: #d8e2ed; font-size: 8px; }
+.performance-journey-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.performance-journey-steps button { position: relative; display: flex; min-width: 0; min-height: 66px; align-items: flex-start; gap: 8px; padding: 10px 9px; border: 1px solid #2f3e51; border-radius: 8px; background: #15212f; color: #d5e1ec; text-align: left; }
+.performance-journey-steps button:not(:last-child)::after { content: "›"; position: absolute; right: -7px; top: 23px; z-index: 2; width: 13px; height: 18px; color: #68798d; background: #131f2c; font-size: 13px; text-align: center; }
+.performance-journey-steps button:hover { border-color: var(--perf-accent); background: #1b293a; }
+.performance-journey-steps em { display: grid; flex: none; width: 25px; height: 25px; place-items: center; border-radius: 7px; background: rgba(var(--perf-accent-rgb), .18); color: #afaaff; font-size: 6px; font-style: normal; font-weight: 900; }
+.performance-journey-steps b, .performance-journey-steps small { display: block; }
+.performance-journey-steps b { margin: 2px 0 4px; font-size: 7px; }
+.performance-journey-steps small { color: #7e8fa1; font-size: 6px; line-height: 1.45; }
+
+.performance-quick-investigate { padding: 16px 17px; background: linear-gradient(160deg, #1f2b3c, #16212f); }
+.performance-quick-title b, .performance-quick-title small { display: block; }
+.performance-quick-title b { margin: 5px 0 3px; color: #fff; font-size: 11px; }
+.performance-quick-title small { color: #8394a6; font-size: 6px; }
+.performance-quick-investigate label { display: block; margin: 11px 0 9px; }
+.performance-quick-investigate input { width: 100%; height: 37px; padding: 0 10px; border: 1px solid #3a4a5f; border-radius: 7px; background: #0f1826; color: #f0f4f8; font: 9px Consolas, monospace; outline: 0; }
+.performance-quick-investigate input:focus { border-color: var(--perf-accent); box-shadow: 0 0 0 3px rgba(var(--perf-accent-rgb), .17); }
+.performance-quick-investigate label span { display: block; margin-top: 4px; color: #6e8093; font-size: 5px; }
+.performance-quick-investigate > div:nth-of-type(2) { display: grid; grid-template-columns: .85fr 1.15fr; gap: 6px; }
+.performance-quick-investigate button { min-height: 33px; padding: 0 8px; font-size: 7px; }
+.performance-quick-investigate .primary { border-color: var(--perf-accent); background: var(--perf-accent); }
+.performance-quick-investigate > p { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0 0; color: #788a9c; font-size: 5px; line-height: 1.45; }
+.performance-quick-investigate > p i { flex: none; width: 6px; height: 6px; margin-top: 1px; border-radius: 50%; background: #3cd480; }
+
+.performance-section-nav { position: relative; z-index: 2; display: flex; align-items: center; gap: 5px; padding: 8px 13px; border-top: 1px solid #2b394c; background: #0f1825; }
+.performance-section-nav button { min-height: 27px; padding: 0 10px; border: 1px solid transparent; border-radius: 14px; background: transparent; color: #7d8fa1; font-size: 6px; font-weight: 900; letter-spacing: .4px; }
+.performance-section-nav button:hover, .performance-section-nav button.active { border-color: #3a4a5f; background: #1f2c3c; color: #dae4ee; }
+.performance-section-nav button.active { border-color: var(--perf-accent); color: #fff; }
+
+#performance-view .diagnostic-layout > .panel,
+#performance-view .performance-section { scroll-margin-top: 15px; }
+#performance-view .diagnostic-layout > .panel { border-radius: 12px; box-shadow: 0 5px 17px #27354a; }
+#performance-view .panel-title { padding-top: 14px; padding-bottom: 14px; }
+#performance-view .db-snapshot-panel,
+#performance-view .tuning-workbench,
+#performance-view .diagnostic-form,
+#performance-view .sql-recommendation-panel { border-top: 3px solid var(--perf-accent); }
+#performance-view .snapshot-count,
+#performance-view .safe-query-badge,
+#performance-view .evidence-badge { background: var(--perf-accent-soft); color: var(--perf-accent); }
+#performance-view .tuning-checks button.active { border-color: var(--perf-accent); background: var(--perf-accent-soft); color: var(--perf-accent); }
+
+#performance-view.performance-non-oracle #performanceOracleSection,
+#performance-view.performance-non-oracle #performanceTraceSection,
+#performance-view.performance-non-oracle #performanceOracleNav,
+#performance-view.performance-non-oracle #performanceTraceNav { display: none; }
+
+#performance-view:not(.engine-postgres) #performancePostgresSection,
+#performance-view:not(.engine-postgres) #performancePostgresNav { display: none; }
+
+#performance-view:not(.engine-mongodb) #performanceMongoSection,
+#performance-view:not(.engine-mongodb) #performanceMongoNav { display: none; }
+
+.mongo-bottleneck-panel {
+  border-color: #1f5044 !important;
+  border-top-color: #21aa81 !important;
+  background: #0c1b1a;
+}
+.mongo-bottleneck-panel::before { background: radial-gradient(circle, #22b280, transparent 67%); }
+.mongo-bottleneck-head { background: linear-gradient(110deg, #0c1e1d, #10312a 58%, #112924); border-bottom-color: #23443b; }
+.mongo-bottleneck-head p,
+.mongo-bottleneck-panel .postgres-findings-column > header span,
+.mongo-bottleneck-panel .postgres-cause-chain header span,
+.mongo-bottleneck-panel .postgres-check-evidence header span,
+.mongo-bottleneck-panel .postgres-technique-head span,
+.mongo-bottleneck-panel .postgres-research-basis > span { color: #40c99c; }
+.mongo-bottleneck-panel .postgres-bottleneck-actions .primary {
+  border-color: #21aa81;
+  background: linear-gradient(135deg, #1fad81, #148168);
+  box-shadow: 0 8px 20px #086e50;
+}
+.mongo-bottleneck-panel .postgres-scope-bar { border-color: #20453b; background: #0f241f; }
+.mongo-bottleneck-panel .postgres-scope-bar > div:first-child > span,
+.mongo-bottleneck-panel .postgres-scope-bar label > span { color: #4ecca3; }
+.mongo-bottleneck-panel .postgres-scope-bar input { border-color: #30554a; background: #0b1716; }
+.mongo-bottleneck-panel .postgres-scope-bar input:focus { border-color: #37c598; box-shadow: 0 0 0 3px #2cb384; }
+.mongo-bottleneck-panel .postgres-scope-safety { border-color: #257d5f !important; background: #11372b !important; }
+.mongo-bottleneck-panel .postgres-scope-safety > i { background: #24ad80; }
+.mongo-bottleneck-panel .postgres-path-step.active b,
+.mongo-bottleneck-panel .postgres-path-step.done b { border-color: #31bc8f; background: #19916f; }
+.mongo-bottleneck-panel .postgres-bottleneck-progress > div i { background: linear-gradient(90deg, #1a916d, #50d7a7); }
+.mongo-bottleneck-panel .postgres-primary-kpi { border-color: #24785a; background: linear-gradient(135deg, #113124, #102c25); }
+.mongo-bottleneck-panel .postgres-primary-kpi > span,
+.mongo-bottleneck-panel .postgres-primary-kpi strong { color: #56d7ab; }
+.mongo-pressure-section > header em { border-color: #298264; color: #61dcb1; background: #123225; }
+.mongo-bottleneck-panel .postgres-pressure-item > span i { background: linear-gradient(90deg, #219f78, #5adcaf); }
+.mongo-bottleneck-panel .postgres-finding { border-left-color: #2ea27c; }
+.mongo-bottleneck-panel .postgres-technique-grid article:hover { border-color: #27916d; }
+.mongo-bottleneck-panel .postgres-technique-grid article > i { color: #54d2a6; background: #153c30; }
+.mongo-bottleneck-panel .postgres-research-basis a { border-color: #285f4f; color: #8be7c9; background: #113128; }
+.mongo-bottleneck-panel .postgres-research-basis a:hover { border-color: #3dbd91; color: #d9fff2; }
+.mongo-scope-bar { grid-template-columns: minmax(260px, 1.25fr) minmax(165px, .55fr) minmax(165px, .55fr) minmax(215px, .75fr); }
+.mongo-bottleneck-kpis .postgres-primary-kpi { min-width: 260px; }
+
+.postgres-bottleneck-panel {
+  position: relative;
+  margin-bottom: 12px;
+  border: 1px solid #23445a !important;
+  border-top: 3px solid #3489bd !important;
+  background: #0e1924;
+  color: #e7f2f9;
+  box-shadow: 0 18px 38px #0e2a3d !important;
+}
+.postgres-bottleneck-panel::before {
+  content: "";
+  position: absolute;
+  top: -100px;
+  right: -75px;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #2690c6, transparent 67%);
+  pointer-events: none;
+}
+.postgres-bottleneck-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 17px 19px;
+  border-bottom: 1px solid #253a49;
+  background: linear-gradient(110deg, #0f1e2a, #122b3d 58%, #112535);
+}
+.postgres-bottleneck-head > div:first-child { min-width: 0; }
+.postgres-bottleneck-head p,
+.postgres-findings-column > header span,
+.postgres-cause-chain header span,
+.postgres-check-evidence header span,
+.postgres-technique-head span,
+.postgres-research-basis > span {
+  margin: 0;
+  color: #60b7e2;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+.postgres-bottleneck-head h2 { margin: 5px 0 5px; color: #f2f8fb; font-size: 16px; letter-spacing: -.25px; }
+.postgres-bottleneck-head > div:first-child > span { display: block; max-width: 800px; color: #8ca6b6; font-size: 7px; line-height: 1.55; }
+.postgres-bottleneck-actions { display: flex; flex: none; align-items: center; gap: 7px; }
+.postgres-bottleneck-actions > span { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid #2f4c5f; border-radius: 16px; background: #0f1d28; color: #8da9b9; font-size: 6px; font-weight: 900; letter-spacing: .6px; }
+.postgres-bottleneck-actions > span i { width: 6px; height: 6px; border-radius: 50%; background: #5b717f; }
+.postgres-bottleneck-actions > span.running { color: #ffc17b; }
+.postgres-bottleneck-actions > span.running i { background: #fa9f3b; box-shadow: 0 0 0 4px #fa9f3b; animation: postgresPulse 1.2s infinite; }
+.postgres-bottleneck-actions > span.complete { color: #71dd9d; }
+.postgres-bottleneck-actions > span.complete i { background: #40ce7c; box-shadow: 0 0 0 4px #40ce7c; }
+.postgres-bottleneck-actions .text-button { height: 31px; padding: 0 9px; border: 1px solid #314e60; border-radius: 6px; color: #a6c2d2; }
+.postgres-bottleneck-actions .primary { height: 33px; border: 0; background: #3489bd; box-shadow: 0 6px 17px #3489bd; }
+@keyframes postgresPulse { 50% { opacity: .35; } }
+
+.postgres-scope-bar {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(210px, .55fr) auto minmax(235px, .65fr);
+  align-items: end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #273b49;
+  background: linear-gradient(90deg, #111f29, #142b3b);
+}
+.postgres-scope-bar > div:first-child > span,
+.postgres-scope-bar label > span,
+.postgres-scope-safety p span,
+.postgres-pressure-section header span,
+.postgres-pressure-section aside > span,
+.postgres-context-focus span,
+.postgres-context-delta span,
+.postgres-context-note span {
+  display: block;
+  color: #69a7c5;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .7px;
+}
+.postgres-scope-bar > div:first-child b { display: block; margin: 4px 0; color: #d1dfe7; font-size: 11px; }
+.postgres-scope-bar > div:first-child small { display: block; color: #7b96a6; font-size: 9px; line-height: 1.45; }
+.postgres-scope-bar label input {
+  width: 100%;
+  height: 36px;
+  margin-top: 5px;
+  padding: 0 10px;
+  border: 1px solid #37576c;
+  border-radius: 7px;
+  outline: 0;
+  background: #0b1922;
+  color: #e8f5fc;
+  font: 11px Consolas, monospace;
+}
+.postgres-scope-bar label input:focus { border-color: #49add8; box-shadow: 0 0 0 3px #3489bd; }
+.postgres-scope-bar > button { height: 36px; padding: 0 11px; border: 1px solid #37576c; border-radius: 7px; color: #9dc9de; font-size: 9px; }
+.postgres-scope-safety { display: flex; min-height: 42px; align-items: center; gap: 9px; padding: 7px 9px; border: 1px solid #265539; border-radius: 8px; background: #10261c; }
+.postgres-scope-safety > i { display: grid; flex: none; width: 29px; height: 29px; place-items: center; border-radius: 7px; background: #1b5d3a; color: #a6f2c7; font: 900 8px Segoe UI, sans-serif; }
+.postgres-scope-safety p { margin: 0; }
+.postgres-scope-safety p b { display: block; margin-bottom: 2px; color: #bbeacd; font-size: 9px; }
+.postgres-scope-safety p span { color: #6da082; font-size: 8px; font-weight: 500; letter-spacing: 0; line-height: 1.35; }
+
+.postgres-analysis-path { display: grid; grid-template-columns: 1fr 20px 1fr 20px 1fr 20px 1fr; align-items: center; gap: 4px; padding: 11px 16px; border-bottom: 1px solid #233744; background: #0f1c26; }
+.postgres-analysis-path > i { height: 1px; background: #324d5e; }
+.postgres-path-step { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 8px; border: 1px solid #273f4c; border-radius: 8px; background: #13232e; color: #839caa; }
+.postgres-path-step > b { display: grid; flex: none; width: 25px; height: 25px; place-items: center; border-radius: 7px; background: #1b303c; color: #648a9f; font-size: 7px; }
+.postgres-path-step span, .postgres-path-step small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.postgres-path-step span { color: #adc1cb; font-size: 7px; font-weight: 800; }
+.postgres-path-step small { margin-top: 3px; color: #637b8a; font-size: 5px; font-weight: 500; }
+.postgres-path-step.active { border-color: #3489bd; background: #123244; }
+.postgres-path-step.active > b { background: #3489bd; color: #fff; }
+.postgres-path-step.done { border-color: #265a40; }
+.postgres-path-step.done > b { background: #216d44; color: #c2f8d9; }
+
+.postgres-bottleneck-progress { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid #233744; background: #0d1822; }
+.postgres-bottleneck-progress > div { flex: 1; height: 4px; overflow: hidden; border-radius: 3px; background: #203442; }
+.postgres-bottleneck-progress > div i { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #3489bd, #5ec6e4); transition: width .3s ease; }
+.postgres-bottleneck-progress span { flex: none; color: #6d8898; font-size: 6px; }
+
+.postgres-bottleneck-kpis { display: grid; grid-template-columns: 2.2fr repeat(4, 1fr); border-bottom: 1px solid #273b49; background: #111f29; }
+.postgres-bottleneck-kpis article { min-width: 0; padding: 12px 14px; border-right: 1px solid #273b49; }
+.postgres-bottleneck-kpis article:last-child { border-right: 0; }
+.postgres-bottleneck-kpis span, .postgres-bottleneck-kpis small { display: block; }
+.postgres-bottleneck-kpis span { color: #6f8b9c; font-size: 5px; font-weight: 900; letter-spacing: .75px; }
+.postgres-bottleneck-kpis strong { display: block; margin: 5px 0 3px; overflow: hidden; color: #e3eff6; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.postgres-bottleneck-kpis small { color: #617988; font-size: 5px; }
+.postgres-bottleneck-kpis .postgres-primary-kpi strong { color: #75c5e9; font-size: 11px; }
+.postgres-bottleneck-kpis strong.warn { color: #f9a551; }
+
+.postgres-pressure-section { border-bottom: 1px solid #273b49; background: #0f1d27; }
+.postgres-pressure-section > header { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 15px; border-bottom: 1px solid #273b49; }
+.postgres-pressure-section header b { display: block; margin-top: 4px; color: #baccd6; font-size: 10px; }
+.postgres-pressure-section header em { padding: 5px 8px; border: 1px solid #345a6e; border-radius: 12px; color: #7bc7e8; font-size: 8px; font-style: normal; font-weight: 900; }
+.postgres-pressure-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(260px, .55fr); }
+.postgres-pressure-map { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; padding: 12px 15px; border-right: 1px solid #273b49; }
+.postgres-pressure-map > p { grid-column: 1 / -1; margin: 6px 0; color: #6f8b9c; font-size: 10px; }
+.postgres-pressure-row { display: grid; grid-template-columns: minmax(100px, .9fr) minmax(90px, 1fr) 26px; align-items: center; gap: 8px; }
+.postgres-pressure-row > span b,
+.postgres-pressure-row > span small { display: block; }
+.postgres-pressure-row > span b { color: #b7cad4; font-size: 9px; }
+.postgres-pressure-row > span small { margin-top: 2px; color: #5f7e8e; font-size: 7px; }
+.postgres-pressure-row > div { height: 7px; overflow: hidden; border-radius: 5px; background: #213644; }
+.postgres-pressure-row > div i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #3489bd, #5ec6e4); }
+.postgres-pressure-row.medium > div i { background: linear-gradient(90deg, #bd6921, #f3b558); }
+.postgres-pressure-row.high > div i { background: linear-gradient(90deg, #be3e27, #f77d4f); }
+.postgres-pressure-row.critical > div i { background: linear-gradient(90deg, #ae2a56, #f45887); }
+.postgres-pressure-row > em { color: #7e9dac; font-size: 9px; font-style: normal; font-weight: 900; text-align: right; }
+.postgres-pressure-section aside { display: grid; align-content: center; gap: 7px; padding: 12px 14px; background: #0d1922; }
+.postgres-pressure-section aside > div + div { padding-top: 8px; border-top: 1px solid #253b49; }
+.postgres-pressure-section aside b { display: block; color: #c2d3dc; font-size: 10px; }
+.postgres-pressure-section aside p { margin: 0; color: #718e9e; font-size: 9px; line-height: 1.5; }
+.postgres-context-focus b { color: #7ecaeb !important; font: 800 10px Consolas, monospace; }
+
+.postgres-bottleneck-workspace { display: grid; min-height: 415px; grid-template-columns: minmax(0, 1.45fr) minmax(290px, .55fr); border-bottom: 1px solid #273b49; }
+.postgres-findings-column { min-width: 0; border-right: 1px solid #273b49; }
+.postgres-findings-column > header,
+.postgres-cause-chain header,
+.postgres-check-evidence header,
+.postgres-technique-head { display: flex; min-height: 45px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 14px; border-bottom: 1px solid #273b49; background: #101d27; }
+.postgres-findings-column > header b,
+.postgres-cause-chain header b,
+.postgres-check-evidence header b,
+.postgres-technique-head b { display: block; margin-top: 3px; color: #adbec9; font-size: 7px; }
+.postgres-findings-column > header em { color: #6e8694; font-size: 6px; font-style: normal; font-weight: 800; }
+.postgres-findings { max-height: 455px; overflow: auto; padding: 10px; }
+.postgres-finding { margin-bottom: 8px; overflow: hidden; border: 1px solid #293e4d; border-left: 3px solid #66889c; border-radius: 8px; background: #13222d; }
+.postgres-finding.critical { border-left-color: #f35282; }
+.postgres-finding.high { border-left-color: #f97243; }
+.postgres-finding.medium { border-left-color: #eda149; }
+.postgres-finding.low { border-left-color: #50b6dd; }
+.postgres-finding.info { border-left-color: #4ac07b; }
+.postgres-finding > header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 10px 11px; border-bottom: 1px solid #273c4a; }
+.postgres-finding > header > span { min-width: 47px; padding: 4px 6px; border-radius: 4px; background: #273d4b; color: #a7c2d2; font-size: 5px; font-weight: 900; text-align: center; }
+.postgres-finding.critical > header > span { background: #4c2234; color: #ff91af; }
+.postgres-finding.high > header > span { background: #4d2a21; color: #ff9c76; }
+.postgres-finding.medium > header > span { background: #45351e; color: #fac06d; }
+.postgres-finding > header b { color: #dbe9f0; font-size: 8px; }
+.postgres-finding > header em { color: #6b8798; font-size: 5px; font-style: normal; font-weight: 800; }
+.postgres-finding-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.postgres-finding-grid > div { padding: 9px 11px; border-right: 1px solid #273c4a; border-bottom: 1px solid #273c4a; }
+.postgres-finding-grid > div:nth-child(2n) { border-right: 0; }
+.postgres-finding-grid > div:nth-last-child(-n+2) { border-bottom: 0; }
+.postgres-finding-grid span { display: block; margin-bottom: 4px; color: #62889a; font-size: 5px; font-weight: 900; letter-spacing: .65px; }
+.postgres-finding-grid p { margin: 0; color: #92a7b3; font-size: 6px; line-height: 1.52; }
+.postgres-finding footer { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-top: 1px solid #273c4a; background: #0f1d26; }
+.postgres-finding footer b { flex: none; color: #62b6da; font-size: 5px; letter-spacing: .6px; }
+.postgres-finding footer p { margin: 0; color: #a6b9c3; font-size: 6px; line-height: 1.5; }
+.postgres-finding footer a { margin-left: auto; color: #60b7e2; font-size: 5px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.postgres-empty { display: grid; min-height: 300px; place-items: center; align-content: center; color: #627c8c; text-align: center; }
+.postgres-empty > span { display: grid; width: 50px; height: 50px; place-items: center; border: 1px solid #2f586e; border-radius: 14px; background: #162e3b; color: #5bacd0; font-size: 12px; font-weight: 900; }
+.postgres-empty b { margin: 12px 0 5px; color: #a8bcc7; font-size: 9px; }
+.postgres-empty p { max-width: 330px; margin: 0; font-size: 7px; line-height: 1.55; }
+
+.postgres-evidence-column { display: grid; min-width: 0; grid-template-rows: auto 1fr; background: #0e1b24; }
+.postgres-cause-chain { border-bottom: 1px solid #273b49; }
+.postgres-cause-chain > div { padding: 9px 13px 12px; }
+.postgres-cause-chain > div > div { position: relative; display: flex; align-items: flex-start; gap: 8px; min-height: 48px; }
+.postgres-cause-chain > div > div:not(:last-child)::after { content: ""; position: absolute; left: 11px; top: 27px; bottom: 0; width: 1px; background: #32576b; }
+.postgres-cause-chain i { display: grid; z-index: 1; flex: none; width: 23px; height: 23px; place-items: center; border: 1px solid #326d8a; border-radius: 50%; background: #142d3b; color: #72bde4; font-size: 6px; font-style: normal; font-weight: 900; }
+.postgres-cause-chain p { margin: 1px 0 0; }
+.postgres-cause-chain p b, .postgres-cause-chain p span { display: block; }
+.postgres-cause-chain p b { color: #b8cbd5; font-size: 7px; }
+.postgres-cause-chain p span { margin-top: 3px; color: #6f8b9c; font-size: 6px; line-height: 1.45; }
+.postgres-check-evidence { min-height: 0; }
+.postgres-check-evidence > div { max-height: 270px; overflow: auto; padding: 8px 11px; }
+.postgres-check-evidence > div > p { margin: 5px; color: #6c8696; font-size: 6px; }
+.postgres-check-row { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 7px; min-height: 36px; border-bottom: 1px solid #213543; }
+.postgres-check-row > i { display: grid; width: 17px; height: 17px; place-items: center; border-radius: 50%; background: #234530; color: #6cda97; font-size: 7px; font-style: normal; font-weight: 900; }
+.postgres-check-row.failed > i { background: #4b2534; color: #ff87a8; }
+.postgres-check-row.skipped > i { background: #3e3626; color: #eeb060; }
+.postgres-check-row b, .postgres-check-row small { display: block; }
+.postgres-check-row b { color: #9eb3be; font-size: 6px; }
+.postgres-check-row small { margin-top: 2px; color: #5e7888; font-size: 5px; }
+.postgres-check-row em { color: #607c8c; font-size: 5px; font-style: normal; }
+
+.postgres-technique-head { min-height: 52px; background: #0f1d26; }
+.postgres-technique-head em { padding: 5px 7px; border: 1px solid #265539; border-radius: 4px; background: #132b1f; color: #60cd88; font-size: 5px; font-style: normal; font-weight: 900; letter-spacing: .6px; }
+.postgres-technique-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #253b49; }
+.postgres-technique-grid article { min-height: 105px; padding: 12px; background: #11202a; }
+.postgres-technique-grid i { display: grid; width: 29px; height: 24px; place-items: center; border-radius: 6px; background: #1b3f52; color: #60b7e2; font-size: 6px; font-style: normal; font-weight: 900; }
+.postgres-technique-grid b { display: block; margin: 8px 0 5px; color: #c1d2db; font-size: 7px; }
+.postgres-technique-grid p { margin: 0; color: #6f8999; font-size: 6px; line-height: 1.52; }
+.postgres-technique-grid code { padding: 1px 3px; border-radius: 3px; background: #19323f; color: #7ccaec; font-size: 5px; }
+.postgres-research-basis { display: flex; align-items: center; gap: 7px; min-height: 43px; padding: 8px 13px; background: #0c1720; }
+.postgres-research-basis a { padding: 5px 7px; border: 1px solid #28404d; border-radius: 12px; color: #86a7b9; font-size: 5px; font-weight: 800; text-decoration: none; }
+.postgres-research-basis a:hover { border-color: #3489bd; color: #7dcaec; }
+
+.postgres-bottleneck-head p,
+.postgres-findings-column > header span,
+.postgres-cause-chain header span,
+.postgres-check-evidence header span,
+.postgres-technique-head span,
+.postgres-research-basis > span { font-size: 8px; }
+.postgres-bottleneck-head h2 { font-size: 20px; }
+.postgres-bottleneck-head > div:first-child > span { font-size: 10px; }
+.postgres-bottleneck-actions > span,
+.postgres-bottleneck-actions .text-button,
+.postgres-bottleneck-actions .primary { font-size: 9px; }
+.postgres-path-step span { font-size: 10px; }
+.postgres-path-step small { font-size: 8px; }
+.postgres-bottleneck-progress span { font-size: 8px; }
+.postgres-bottleneck-kpis span,
+.postgres-bottleneck-kpis small { font-size: 8px; }
+.postgres-bottleneck-kpis strong { font-size: 18px; }
+.postgres-bottleneck-kpis .postgres-primary-kpi strong { font-size: 13px; }
+.postgres-findings-column > header b,
+.postgres-cause-chain header b,
+.postgres-check-evidence header b,
+.postgres-technique-head b { font-size: 10px; }
+.postgres-findings-column > header em { font-size: 8px; }
+.postgres-finding > header > span,
+.postgres-finding > header em,
+.postgres-finding-grid span,
+.postgres-finding footer b,
+.postgres-finding footer a { font-size: 8px; }
+.postgres-finding > header b { font-size: 11px; }
+.postgres-finding-grid p,
+.postgres-finding footer p,
+.postgres-cause-chain p span,
+.postgres-check-row b { font-size: 9px; }
+.postgres-cause-chain p b { font-size: 10px; }
+.postgres-check-row small,
+.postgres-check-row em { font-size: 8px; }
+.postgres-technique-grid b { font-size: 10px; }
+.postgres-technique-grid p { font-size: 9px; }
+.postgres-technique-grid code,
+.postgres-research-basis a { font-size: 8px; }
+
+#performance-view .diagnostic-form { overflow: hidden; }
+#performance-view .diagnostic-fields { background: linear-gradient(90deg, #fbfcfe, var(--perf-accent-soft)); }
+#performance-view .diagnostic-cards article { position: relative; overflow: hidden; }
+#performance-view .diagnostic-cards article::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--perf-accent); opacity: .75; }
+
+@media (max-width: 1250px) {
+  .performance-engine-switcher { grid-template-columns: repeat(3, 1fr); }
+  .performance-cockpit { grid-template-columns: 1fr; }
+  .performance-journey { border-right: 0; border-bottom: 1px solid #2f3d52; }
+  .postgres-bottleneck-kpis { grid-template-columns: 2fr repeat(2, 1fr); }
+  .postgres-bottleneck-kpis article { border-bottom: 1px solid #273b49; }
+  .postgres-scope-bar { grid-template-columns: 1fr 1fr; }
+  .postgres-pressure-layout { grid-template-columns: 1fr; }
+  .postgres-pressure-map { border-right: 0; border-bottom: 1px solid #273b49; }
+  .postgres-technique-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .performance-command-head { align-items: flex-start; flex-direction: column; }
+  .performance-connection-state { width: 100%; }
+  .performance-connection-state > div { min-width: 0; flex: 1; }
+  .performance-journey-steps { grid-template-columns: 1fr 1fr; }
+  .performance-journey-steps button::after { display: none; }
+  .postgres-bottleneck-head { align-items: flex-start; flex-direction: column; }
+  .postgres-bottleneck-actions { width: 100%; }
+  .postgres-analysis-path { grid-template-columns: 1fr 1fr; }
+  .postgres-analysis-path > i { display: none; }
+  .postgres-bottleneck-workspace { grid-template-columns: 1fr; }
+  .postgres-findings-column { border-right: 0; border-bottom: 1px solid #273b49; }
+  .postgres-pressure-map { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .performance-engine-switcher { grid-template-columns: 1fr 1fr; }
+  .performance-engine-switcher button:last-child { grid-column: 1 / 3; }
+  .performance-journey-steps { grid-template-columns: 1fr; }
+  .performance-quick-investigate > div:nth-of-type(2) { grid-template-columns: 1fr; }
+  .performance-section-nav { overflow-x: auto; }
+  .performance-section-nav button { flex: none; }
+  .postgres-bottleneck-actions { flex-wrap: wrap; }
+  .postgres-bottleneck-actions .primary { flex: 1; }
+  .postgres-scope-bar { grid-template-columns: 1fr; }
+  .postgres-bottleneck-kpis,
+  .postgres-technique-grid,
+  .postgres-finding-grid { grid-template-columns: 1fr; }
+  .postgres-finding-grid > div { border-right: 0; }
+  .postgres-research-basis { flex-wrap: wrap; }
+}

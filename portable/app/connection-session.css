@@ -1,0 +1,84 @@
+.connection-session-badge {
+  padding: 4px 7px;
+  border-radius: 10px;
+  background: #edf1f4;
+  color: #768495;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .65px;
+}
+
+.connection-session-badge.saved {
+  background: #e4f9eb;
+  color: #148347;
+}
+
+.connection-session-badge.cleared {
+  background: #ffecdc;
+  color: #af5500;
+}
+
+.connection-session-badge.error {
+  background: #fee7ee;
+  color: #bc2a57;
+}
+
+.connection-session-box {
+  margin: 2px 14px 9px;
+  padding: 9px;
+  border: 1px solid #e1e6eb;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #fafbfe, #f1f1ff);
+}
+
+.connection-session-box > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.connection-session-box span {
+  color: #8a96a3;
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .65px;
+}
+
+.connection-session-box b {
+  overflow: hidden;
+  color: #516475;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connection-session-box > div:nth-child(2) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.connection-session-box button {
+  min-height: 27px;
+  border: 1px solid #d8dfeb;
+  border-radius: 5px;
+  background: #fff;
+  color: #544bcd;
+  font-size: 7px;
+  font-weight: 800;
+}
+
+.connection-session-box button:hover {
+  border-color: #776df4;
+  background: #f5f3ff;
+}
+
+.connection-session-box small {
+  display: block;
+  margin-top: 7px;
+  color: #99a3ae;
+  font-size: 6px;
+  line-height: 1.4;
+}

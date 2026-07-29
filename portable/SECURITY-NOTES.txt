@@ -1,0 +1,53 @@
+DBridge Portable v2.21 - Security Notes
+=======================================
+
+Purpose
+-------
+This package is an install-free local database and DevOps diagnostic console.
+Extract the full ZIP to a user-writable folder, then double-click
+Start-DBridge.cmd. Close the console window to stop DBridge.
+
+Security boundary
+-----------------
+- The local service binds only to 127.0.0.1.
+- Non-local Host headers are rejected.
+- Every launch creates a new random API token.
+- Browser responses use a restrictive Content Security Policy, frame blocking,
+  MIME sniffing protection, no-referrer policy, same-origin resource controls,
+  and restricted browser feature permissions.
+- SQL and infrastructure workflows start read-only.
+- Write actions use fixed allowlists, explicit unlocking, preflight checks and
+  user confirmation.
+- Passwords are not written to DBridge configuration or session files.
+- Log and trace reads are bounded and never modify the source file.
+- Runtime trace capture uses fixed retained-evidence checks. Profiler, tracing,
+  optimizer trace, Extended Events and server settings are never enabled.
+- Session-changing trace examples are emitted only as commented, review-only
+  terminal templates and are never submitted to a database.
+- Arbitrary shell text is not accepted by the DevOps GUI or Terminal workspace.
+- Terminal tabs restore only non-secret profile context; their output is session-only.
+- DBridge does not download or install tools.
+
+Company controls
+----------------
+DBridge does not disable or bypass antivirus, endpoint detection, application
+allowlisting, email filtering, proxy controls, database permissions, SSH
+permissions, Kubernetes RBAC, Docker daemon permissions, or company policy.
+Your security team may still block portable runtimes, command files, database
+drivers, or unsigned internal applications. Obtain approval when required.
+
+Package verification
+--------------------
+The release folder includes:
+
+1. DBridge-Portable.zip
+2. DBridge-Portable.zip.sha256.txt
+
+Use the SHA256 value to confirm that the received ZIP matches the original.
+The ZIP also contains PACKAGE-MANIFEST.txt with hashes of its application files.
+
+Sharing
+-------
+Send the ZIP only through a company-approved email or file-transfer channel.
+Do not include database passwords, SSH keys, cloud tokens, connection exports,
+logs, traces, or incident evidence in the package.
