@@ -11,6 +11,12 @@
   const token = document.querySelector('meta[name="dbridge-token"]')?.content || "";
   const PROFILE_KEY = "dbridge.ssh.serverProfiles.v2";
   const MAX_UI_SESSIONS = 4;
+  const ENVIRONMENTS = new Set(["Production", "SIT", "UAT-Test", "DEV"]);
+
+  function currentEnvironment() {
+    const value = el("sshTerminalEnvironment")?.value || "Production";
+    return ENVIRONMENTS.has(value) ? value : "Production";
+  }
   const sessions = new Map();
   let activeId = "";
   let connecting = false;
@@ -34,7 +40,7 @@
   function readProfiles() {
     try {
       const parsed = JSON.parse(localStorage.getItem(PROFILE_KEY) || "[]");
-      profiles = Array.isArray(parsed) ? parsed.filter((item) => item && item.id && item.host).slice(0, 30) : [];
+      profiles = Array.isArray(parsed) ? parsed.filter((item) => item && item.id && item.host).map((item) => ({ ...item, environment: ENVIRONMENTS.has(item.environment) ? item.environment : "Production" })).slice(0, 30) : [];
     } catch {
       profiles = [];
     }
@@ -45,7 +51,7 @@
   }
 
   function sessionLabel(session) {
-    return `${session.username}@${session.host}`;
+    return `${session.environment || "Production"} · ${session.username}@${session.host}`;
   }
 
   function activeSession() {
@@ -256,6 +262,7 @@
 
   function readConnectionForm() {
     return {
+      environment: currentEnvironment(),
       host: el("sshTerminalHost").value.trim(),
       port: el("sshTerminalPort").value.trim() || "22",
       username: el("sshTerminalUsername").value.trim(),
@@ -271,22 +278,35 @@
     el("sshTerminalPassphrase").value = "";
   }
 
+  function inspectionPayload() {
+    const form = readConnectionForm();
+    delete form.password;
+    delete form.passphrase;
+    return form;
+  }
+
+  async function inspectHost() {
+    const result = await call("/api/terminal/ssh/preflight", {
+      method: "POST",
+      body: JSON.stringify(inspectionPayload()),
+    });
+    if (!result.target?.fingerprint || !result.target?.trustStatus) throw new Error("The SSH server did not present a usable host key");
+    return result.target;
+  }
+
   async function preflight() {
     const resultNode = el("sshPreflightResult");
     resultNode.className = "ssh-preflight-result";
-    resultNode.innerHTML = "<i></i><span><b>Checking target trust…</b> Validating address, port and known_hosts entry.</span>";
+    resultNode.innerHTML = "<i></i><span><b>Inspecting server keyâ€¦</b> No SSH credential is sent during this check.</span>";
     try {
-      const result = await call("/api/terminal/ssh/preflight", {
-        method: "POST",
-        body: JSON.stringify(readConnectionForm()),
-      });
-      const target = result.target;
-      const family = target.addressFamily === 6 ? "IPv6" : target.addressFamily === 4 ? "IPv4" : "hostname / SSH alias";
-      resultNode.className = "ssh-preflight-result good";
-      resultNode.innerHTML = `<i></i><span><b>Trusted target ready</b> ${target.host}:${target.port} · ${family} · ${target.knownHostKeys} matching host key${target.knownHostKeys === 1 ? "" : "s"}.</span>`;
+      const target = await inspectHost();
+      const family = target.addressFamily === 6 ? "IPv6" : target.addressFamily === 4 ? "IPv4" : "hostname";
+      resultNode.className = `ssh-preflight-result ${target.trustStatus === "changed" ? "bad" : "good"}`;
+      const label = target.trustStatus === "trusted" ? "Pinned key matched" : target.trustStatus === "new" ? "New key ready for approval" : "Host key changed â€” blocked";
+      resultNode.innerHTML = `<i></i><span><b>${label}</b> ${target.host}:${target.port} Â· ${family} Â· ${target.keyType}<br>${target.fingerprint}</span>`;
     } catch (error) {
       resultNode.className = "ssh-preflight-result bad";
-      resultNode.innerHTML = `<i></i><span><b>Preflight blocked</b> ${String(error.message)}</span>`;
+      resultNode.innerHTML = `<i></i><span><b>Inspection blocked</b> ${String(error.message)}</span>`;
       notify(error.message, true);
     }
   }
@@ -298,13 +318,21 @@
     updateState();
     const payload = readConnectionForm();
     try {
+      const inspected = await inspectHost();
+      if (inspected.trustStatus === "changed") throw new Error("SSH host key changed. Verify the server rebuild or re-key before replacing the pin.");
+      const trustHostKey = inspected.trustStatus === "new";
+      if (trustHostKey && !window.confirm(`First connection to ${inspected.host}:${inspected.port}.\n\nTrust and pin this host key?\n${inspected.keyType}\n${inspected.fingerprint}\n\nNo credential has been sent yet.`)) {
+        notify("Connection cancelled before authentication");
+        return;
+      }
       const opened = await call("/api/terminal/ssh/open", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, trustHostKey, hostFingerprint: inspected.fingerprint, hostKeyType: inspected.keyType }),
       });
       clearSecrets();
       const session = {
         id: opened.sessionId,
+        environment: payload.environment,
         host: opened.host,
         port: opened.port,
         username: opened.username,
@@ -324,7 +352,7 @@
       consumeStream(session).catch((error) => {
         if (error.name !== "AbortError") markClosed(session, error.message);
       });
-      notify(`Connected to ${sessionLabel(session)}`);
+      notify(trustHostKey ? `Host key pinned; connected to ${sessionLabel(session)}` : `Pinned key matched; connected to ${sessionLabel(session)}`);
     } catch (error) {
       setState("error", "BLOCKED");
       notify(error.message, true);
@@ -334,7 +362,6 @@
       updateState();
     }
   }
-
   async function disconnectActive() {
     const session = activeSession();
     if (!session) return;
@@ -356,9 +383,11 @@
     const select = el("sshSavedProfile");
     if (!select) return;
     const selected = select.value;
-    select.innerHTML = '<option value="">Select saved server…</option>' + profiles.map((profile) =>
+    const environment = currentEnvironment();
+    const scoped = profiles.filter((profile) => profile.environment === environment);
+    select.innerHTML = '<option value="">Select saved server…</option>' + scoped.map((profile) =>
       `<option value="${profile.id}">${profile.name} · ${profile.username}@${profile.host}:${profile.port}</option>`).join("");
-    if (profiles.some((profile) => profile.id === selected)) select.value = selected;
+    if (scoped.some((profile) => profile.id === selected)) select.value = selected;
   }
 
   function applyProfile() {
@@ -378,9 +407,11 @@
     const form = readConnectionForm();
     const name = el("sshProfileName").value.trim();
     if (!name || !form.host || !form.username) return notify("Enter a profile name, server and username", true);
-    const existing = profiles.find((item) => item.name.toLowerCase() === name.toLowerCase());
+    const environment = currentEnvironment();
+    const existing = profiles.find((item) => item.environment === environment && item.name.toLowerCase() === name.toLowerCase());
     const profile = {
       id: existing?.id || `ssh-${Date.now().toString(36)}`,
+      environment,
       name: name.slice(0, 80),
       host: form.host.slice(0, 255),
       port: form.port,
@@ -423,7 +454,7 @@
     preflightButton.type = "button";
     preflightButton.id = "sshTerminalPreflight";
     preflightButton.className = "ssh-terminal-preflight";
-    preflightButton.textContent = "Preflight trust";
+    preflightButton.textContent = "Inspect host key";
     panel.querySelector(".ssh-terminal-actions")?.appendChild(preflightButton);
     el("sshTerminalConnect").textContent = "Open server tab";
     el("sshTerminalDisconnect").textContent = "Disconnect active";
@@ -431,7 +462,7 @@
     const preflightResult = document.createElement("div");
     preflightResult.id = "sshPreflightResult";
     preflightResult.className = "ssh-preflight-result";
-    preflightResult.innerHTML = "<i></i><span><b>Target not checked</b> Enter a hostname, IPv4, or bracketed IPv6 address and run Preflight trust.</span>";
+    preflightResult.innerHTML = "<i></i><span><b>Target not checked</b> Enter a hostname, IPv4, or bracketed IPv6 address and inspect its key.</span>";
     controls.after(preflightResult);
 
     const tabs = document.createElement("div");
@@ -460,6 +491,12 @@
       return;
     }
 
+    el("sshTerminalEnvironment").addEventListener("change", () => {
+      el("sshSavedProfile").value = "";
+      el("sshProfileName").value = "";
+      renderProfiles();
+      notify(`${currentEnvironment()} Linux workspace selected`);
+    });
     el("sshTerminalAuth").addEventListener("change", updateAuthFields);
     el("sshTerminalConnect").addEventListener("click", connect);
     el("sshTerminalDisconnect").addEventListener("click", disconnectActive);

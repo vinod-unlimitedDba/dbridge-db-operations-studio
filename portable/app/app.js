@@ -13,8 +13,8 @@ state.oracleBottleneck = { result: null, previousResult: null, report: "", runni
 state.postgresBottleneck = { result: null, previousResult: null, report: "", running: false };
 state.mongodbBottleneck = { result: null, previousResult: null, report: "", running: false };
 state.runtimeTrace = { engine: "oracle", tab: "findings", results: {}, report: "", running: false };
-state.connectionSession = { activeEngine: "oracle", timer: null, restoring: false, suspendAutoSave: false };
-state.sqlStudio = { connected: false, connecting: false, fingerprint: "", objects: [], objectFilter: "", result: null };
+state.connectionSession = { activeEnvironment: "Production", activeEngine: "oracle", timer: null, restoring: false, suspendAutoSave: false };
+state.sqlStudio = { connected: false, connecting: false, fingerprint: "", objects: [], objectFilter: "", result: null, adapters: {} };
 const containerWriteActions = {
   kubernetes: [
     { id: "restartDeployment", label: "Restart deployment rollout", targetKind: "deployment", placeholder: "deployment-name", guidance: "Triggers a rolling restart using the current Deployment specification." },
@@ -241,6 +241,17 @@ function sanitizeProfileName(value) {
   return name;
 }
 
+const DBRIDGE_ENVIRONMENTS = new Set(["Production", "SIT", "UAT-Test", "DEV"]);
+
+function currentSqlEnvironment() {
+  const value = $("#sqlEnvironment")?.value || "Production";
+  return DBRIDGE_ENVIRONMENTS.has(value) ? value : "Production";
+}
+
+function connectionSessionKey(engine, environment = currentSqlEnvironment()) {
+  return `${environment}::${engine}`;
+}
+
 function readConnectionProfiles() {
   try {
     const parsed = JSON.parse(localStorage.getItem(CONNECTION_PROFILE_STORAGE_KEY) || "null");
@@ -248,7 +259,8 @@ function readConnectionProfiles() {
     return parsed.profiles.reduce((list, profile) => {
       if (!profile || !sqlAdapterUi[profile.engine]) return list;
       try {
-        list.push({ name: sanitizeProfileName(profile.name), engine: profile.engine, entry: sanitizeConnectionSessionEntry(profile.entry) });
+        const environment = DBRIDGE_ENVIRONMENTS.has(profile.environment) ? profile.environment : "Production";
+        list.push({ name: sanitizeProfileName(profile.name), engine: profile.engine, environment, entry: sanitizeConnectionSessionEntry({ ...profile.entry, environment }) });
       } catch { /* drop any profile that no longer validates */ }
       return list;
     }, []);
@@ -261,7 +273,8 @@ function writeConnectionProfiles(profiles) {
 
 function renderConnectionProfiles(selectedName = "") {
   const engine = $("#sqlEngine").value;
-  const profiles = readConnectionProfiles().filter((profile) => profile.engine === engine);
+  const environment = currentSqlEnvironment();
+  const profiles = readConnectionProfiles().filter((profile) => profile.engine === engine && profile.environment === environment);
   const select = $("#connectionProfileSelect");
   select.innerHTML = `<option value="">${profiles.length ? "Select a saved profile…" : "No profiles saved for this engine"}</option>${profiles.map((profile) => `<option value="${escapeHtml(profile.name)}">${escapeHtml(profile.name)} · ${escapeHtml(profile.entry.host || "no host")}</option>`).join("")}`;
   select.value = profiles.some((profile) => profile.name === selectedName) ? selectedName : "";
@@ -272,15 +285,16 @@ function renderConnectionProfiles(selectedName = "") {
 
 function saveConnectionProfile() {
   const engine = $("#sqlEngine").value;
+  const environment = currentSqlEnvironment();
   if (!sqlAdapterUi[engine]) return toast("Select a supported database engine", true);
   const suggested = `${sqlAdapterUi[engine].name} · ${$("#sqlDatabase").value.trim() || $("#sqlHost").value.trim() || "target"}`;
   const requested = window.prompt("Name this connection profile", suggested);
   if (requested === null) return;
   try {
     const name = sanitizeProfileName(requested);
-    const entry = sanitizeConnectionSessionEntry({ host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
-    const profiles = readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.name === name));
-    profiles.push({ name, engine, entry });
+    const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
+    const profiles = readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.environment === environment && profile.name === name));
+    profiles.push({ name, engine, environment, entry });
     writeConnectionProfiles(profiles);
     renderConnectionProfiles(name);
     toast(`Connection profile "${name}" saved without the password`);
@@ -292,7 +306,8 @@ function saveConnectionProfile() {
 function applyConnectionProfile(name) {
   if (!name) { $("#deleteConnectionProfile").disabled = true; return; }
   const engine = $("#sqlEngine").value;
-  const profile = readConnectionProfiles().find((item) => item.engine === engine && item.name === name);
+  const environment = currentSqlEnvironment();
+  const profile = readConnectionProfiles().find((item) => item.engine === engine && item.environment === environment && item.name === name);
   if (!profile) return renderConnectionProfiles();
   state.connectionSession.restoring = true;
   applySavedConnectionEntry(engine, profile.entry);
@@ -310,7 +325,8 @@ function deleteConnectionProfile() {
   const name = $("#connectionProfileSelect").value;
   if (!name) return;
   if (!window.confirm(`Delete the saved connection profile "${name}"?`)) return;
-  writeConnectionProfiles(readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.name === name)));
+  const environment = currentSqlEnvironment();
+  writeConnectionProfiles(readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.environment === environment && profile.name === name)));
   renderConnectionProfiles();
   toast(`Connection profile "${name}" deleted`);
 }
@@ -679,13 +695,14 @@ function openFriendlyWorkspaceTarget(button) {
 }
 
 function connection(engineId = "sqlEngine") {
-  return { engine: $(`#${engineId}`).value, connection: { host: $("#sqlHost").value.trim(), port: $("#sqlPort").value.trim(), database: $("#sqlDatabase").value.trim(), username: $("#sqlUsername").value.trim(), password: $("#sqlPassword").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value } };
+  return { environment: currentSqlEnvironment(), engine: $(`#${engineId}`).value, connection: { host: $("#sqlHost").value.trim(), port: $("#sqlPort").value.trim(), database: $("#sqlDatabase").value.trim(), username: $("#sqlUsername").value.trim(), password: $("#sqlPassword").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value } };
 }
 
 const CONNECTION_SESSION_STORAGE_KEY = "dbridge.sql.connection.v1";
 
 function sanitizeConnectionSessionEntry(value) {
   const entry = value && typeof value === "object" ? value : {};
+  const environment = ["Production", "SIT", "UAT-Test", "DEV"].includes(entry.environment) ? entry.environment : "Production";
   const host = String(entry.host || "").trim();
   const port = String(entry.port || "").trim();
   const database = String(entry.database || "").trim();
@@ -696,21 +713,26 @@ function sanitizeConnectionSessionEntry(value) {
   if (port && (!/^\d{1,5}$/.test(port) || Number(port) > 65535)) throw new Error("Saved connection port is invalid");
   if (database && !/^[A-Za-z0-9_.:$@/-]{1,255}$/.test(database)) throw new Error("Saved database or service is invalid");
   if (username && !/^[A-Za-z0-9_.@+\\-]{1,255}$/.test(username)) throw new Error("Saved connection username is invalid");
-  return { host, port, database, username, authMode, tlsMode };
+  return { environment, host, port, database, username, authMode, tlsMode };
 }
 
 function readConnectionSession() {
-  const fallback = { version: 1, activeEngine: "oracle", connections: {} };
+  const fallback = { version: 2, activeEnvironment: "Production", activeEngine: "oracle", connections: {} };
   try {
     const parsed = JSON.parse(localStorage.getItem(CONNECTION_SESSION_STORAGE_KEY) || "null");
-    if (!parsed || parsed.version !== 1 || !parsed.connections || typeof parsed.connections !== "object") return fallback;
+    if (!parsed || ![1, 2].includes(parsed.version) || !parsed.connections || typeof parsed.connections !== "object") return fallback;
     const connections = {};
-    Object.entries(parsed.connections).forEach(([engine, entry]) => {
-      if (sqlAdapterUi[engine]) {
-        try { connections[engine] = sanitizeConnectionSessionEntry(entry); } catch {}
+    Object.entries(parsed.connections).forEach(([scope, entry]) => {
+      const legacyEngine = sqlAdapterUi[scope] ? scope : "";
+      const separator = scope.lastIndexOf("::");
+      const environment = legacyEngine ? "Production" : scope.slice(0, separator);
+      const engine = legacyEngine || scope.slice(separator + 2);
+      if (sqlAdapterUi[engine] && DBRIDGE_ENVIRONMENTS.has(environment)) {
+        try { connections[connectionSessionKey(engine, environment)] = sanitizeConnectionSessionEntry({ ...entry, environment }); } catch {}
       }
     });
-    return { version: 1, activeEngine: sqlAdapterUi[parsed.activeEngine] ? parsed.activeEngine : "oracle", connections, savedAt: String(parsed.savedAt || "") };
+    const activeEnvironment = DBRIDGE_ENVIRONMENTS.has(parsed.activeEnvironment) ? parsed.activeEnvironment : "Production";
+    return { version: 2, activeEnvironment, activeEngine: sqlAdapterUi[parsed.activeEngine] ? parsed.activeEngine : "oracle", connections, savedAt: String(parsed.savedAt || "") };
   } catch { return fallback; }
 }
 
@@ -720,19 +742,21 @@ function setConnectionSessionStatus(kind, label, detail) {
   $("#connectionSessionStatus").textContent = detail;
 }
 
-function persistConnectionSession(engine = $("#sqlEngine").value, makeActive = true, announce = false) {
+function persistConnectionSession(engine = $("#sqlEngine").value, makeActive = true, announce = false, environment = currentSqlEnvironment()) {
   try {
     if (!sqlAdapterUi[engine]) throw new Error("Select a supported database engine");
     const stored = readConnectionSession();
-    const entry = sanitizeConnectionSessionEntry({ host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
-    stored.connections[engine] = entry;
-    if (makeActive) stored.activeEngine = engine;
+    const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
+    stored.version = 2;
+    stored.connections[connectionSessionKey(engine, environment)] = entry;
+    if (makeActive) { stored.activeEngine = engine; stored.activeEnvironment = environment; }
     stored.savedAt = new Date().toISOString();
     localStorage.setItem(CONNECTION_SESSION_STORAGE_KEY, JSON.stringify(stored));
     state.connectionSession.activeEngine = makeActive ? engine : state.connectionSession.activeEngine;
+    state.connectionSession.activeEnvironment = makeActive ? environment : state.connectionSession.activeEnvironment;
     if (performanceWorkspaceCatalog[engine]) state.performanceWorkspace.connections[engine] = { ...entry };
     const savedTime = new Date(stored.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    setConnectionSessionStatus("saved", "SAVED", `${sqlAdapterUi[engine].name} · ${savedTime}`);
+    setConnectionSessionStatus("saved", "SAVED", `${environment} · ${sqlAdapterUi[engine].name} · ${savedTime}`);
     if (announce) toast("SQL connection session saved without the password");
     return true;
   } catch (error) {
@@ -764,9 +788,12 @@ function applySavedConnectionEntry(engine, entry) {
 function restoreConnectionSession() {
   const stored = readConnectionSession();
   const engine = stored.activeEngine;
-  const entry = stored.connections[engine];
+  const environment = stored.activeEnvironment || "Production";
+  const entry = stored.connections[connectionSessionKey(engine, environment)];
   state.connectionSession.restoring = true;
   state.connectionSession.activeEngine = engine;
+  state.connectionSession.activeEnvironment = environment;
+  $("#sqlEnvironment").value = environment;
   $("#sqlEngine").value = engine;
   if (entry) applySavedConnectionEntry(engine, entry);
   else { $("#sqlAuthMode").value = sqlContextOnlyEngines.has(engine) ? "context" : "password"; $("#sqlTlsMode").value = "prefer"; updatePort(); }
@@ -774,7 +801,7 @@ function restoreConnectionSession() {
   state.connectionSession.restoring = false;
   if (entry) {
     const savedTime = stored.savedAt ? new Date(stored.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "earlier";
-    setConnectionSessionStatus("saved", "RESTORED", `${sqlAdapterUi[engine].name} · ${savedTime}`);
+    setConnectionSessionStatus("saved", "RESTORED", `${environment} · ${sqlAdapterUi[engine].name} · ${savedTime}`);
   } else setConnectionSessionStatus("", "LOCAL SESSION", "Changes save automatically");
   updateConnectionAdapterUi(); updateSnapshotTarget(); updateOracleXrayTarget(); updatePerformanceContextTarget();
   return engine;
@@ -796,13 +823,191 @@ function sqlConnectionEngineChanged() {
   state.connectionSession.activeEngine = nextEngine;
   editorEngineChanged();
   const stored = readConnectionSession();
-  if (stored.connections[nextEngine]) applySavedConnectionEntry(nextEngine, stored.connections[nextEngine]);
+  const entry = stored.connections[connectionSessionKey(nextEngine)];
+  if (entry) applySavedConnectionEntry(nextEngine, entry);
   else { $("#sqlAuthMode").value = sqlContextOnlyEngines.has(nextEngine) ? "context" : "password"; $("#sqlTlsMode").value = "prefer"; }
   $("#sqlPassword").value = "";
   disconnectSqlStudio(false);
   updateConnectionAdapterUi(); updateSnapshotTarget(); updateOracleXrayTarget(); updatePerformanceContextTarget();
   renderConnectionProfiles();
   scheduleConnectionSessionSave();
+}
+
+function sqlEnvironmentChanged() {
+  const nextEnvironment = currentSqlEnvironment();
+  const previousEnvironment = state.connectionSession.activeEnvironment || "Production";
+  const engine = $("#sqlEngine").value;
+  if (!state.connectionSession.restoring && DBRIDGE_ENVIRONMENTS.has(previousEnvironment)) {
+    persistConnectionSession(engine, false, false, previousEnvironment);
+  }
+  state.connectionSession.activeEnvironment = nextEnvironment;
+  const stored = readConnectionSession();
+  const entry = stored.connections[connectionSessionKey(engine, nextEnvironment)];
+  state.connectionSession.restoring = true;
+  if (entry) applySavedConnectionEntry(engine, entry);
+  else {
+    $("#sqlHost").value = "localhost";
+    $("#sqlPort").value = sqlAdapterUi[engine]?.port || "";
+    $("#sqlDatabase").value = engine === "oracle" ? "ORCL" : engine === "postgres" ? "postgres" : "";
+    $("#sqlUsername").value = "";
+    $("#sqlAuthMode").value = sqlContextOnlyEngines.has(engine) ? "context" : "password";
+    $("#sqlTlsMode").value = "prefer";
+  }
+  $("#sqlPassword").value = "";
+  state.connectionSession.restoring = false;
+  disconnectSqlStudio(false);
+  updateConnectionAdapterUi(); updateSnapshotTarget(); updateOracleXrayTarget(); updatePerformanceContextTarget();
+  renderConnectionProfiles();
+  scheduleConnectionSessionSave();
+  toast(`${nextEnvironment} connection workspace selected`);
+}
+
+const DB_STUDIO_DEFAULT_DATABASES = {
+  oracle: "ORCL", postgres: "postgres", mongodb: "admin", mysql: "mysql", sqlserver: "master",
+  mariadb: "mysql", redshift: "dev", synapse: "master", snowflake: "", bigquery: "", databricks: "",
+  db2: "", hana: "", clickhouse: "default", teradata: "",
+};
+
+function renderDbStudioConnector() {
+  if (!$("#dbStudioAdapterName")) return;
+  const engine = $("#sqlEngine").value;
+  const local = sqlAdapterUi[engine] || sqlAdapterUi.oracle;
+  const adapter = state.sqlStudio.adapters[engine] || null;
+  const adapters = Object.values(state.sqlStudio.adapters || {});
+  const ready = adapters.filter((item) => item.available).length;
+  $("#dbStudioReadyCount").textContent = adapters.length ? String(ready) : String(Object.keys(sqlAdapterUi).length);
+  $("#dbStudioReadyLabel").textContent = adapters.length ? `${ready} of ${adapters.length} ready on this laptop` : "Connector catalog loaded";
+  $("#dbStudioAdapterName").textContent = adapter?.name || local.name;
+  const accessState = $("#dbStudioAccessState");
+  const access = adapter?.directAvailable ? "BUNDLED DRIVER" : adapter?.clientAvailable ? "LOCAL CLIENT" : adapter?.available === false ? "CLIENT NEEDED" : "READY";
+  accessState.textContent = access;
+  accessState.className = adapter?.directAvailable ? "ready" : adapter?.clientAvailable ? "client" : adapter?.available === false ? "blocked" : "ready";
+  const accessDetail = adapter?.preferredAccess === "direct" ? `${adapter.driver} direct driver` : adapter?.client ? `${adapter.client} approved client` : local.driver ? `${local.driver} bundled driver` : "approved local client";
+  $("#dbStudioAdapterMeta").textContent = `${adapter?.tier || local.hint} · ${adapter?.auth || "connection credentials"} · ${accessDetail}.`;
+  const badges = [String(adapter?.family || "database").toUpperCase(), "SQL", "CATALOG", "TLS", "AUTOFILL", "READ ONLY"];
+  $("#dbStudioCapabilityBadges").innerHTML = badges.map((badge) => `<i>${escapeHtml(badge)}</i>`).join("");
+}
+
+async function loadDbStudioAdapters() {
+  try {
+    const result = await api("/api/adapters");
+    state.sqlStudio.adapters = result.adapters || {};
+    renderDbStudioConnector();
+  } catch (error) {
+    $("#dbStudioReadyLabel").textContent = "Readiness check unavailable";
+    renderDbStudioConnector();
+  }
+}
+
+function updateDbStudioAutofillHint() {
+  if (!$("#dbStudioAutofillHint")) return;
+  const source = $("#dbStudioAutofillSource").value;
+  const environment = currentSqlEnvironment();
+  const messages = {
+    last: `Restores the last non-secret ${environment} session for this adapter.`,
+    profile: "Loads the saved connection profile selected in the connection panel below.",
+    defaults: `Applies the standard port, service, authentication and TLS defaults for ${environment}.`,
+  };
+  $("#dbStudioAutofillHint").textContent = `${messages[source]} Passwords are never filled or saved.`;
+}
+
+function applyDbStudioAutofill() {
+  const source = $("#dbStudioAutofillSource").value;
+  const engine = $("#sqlEngine").value;
+  const environment = currentSqlEnvironment();
+  if (source === "profile") {
+    const profile = $("#connectionProfileSelect").value;
+    if (!profile) return toast("Select a saved connection profile below before using profile autofill", true);
+    applyConnectionProfile(profile);
+    updateDbStudioAutofillHint();
+    return;
+  }
+  state.connectionSession.restoring = true;
+  if (source === "last") {
+    const stored = readConnectionSession();
+    const entry = stored.connections[connectionSessionKey(engine, environment)];
+    if (!entry) {
+      state.connectionSession.restoring = false;
+      return toast(`No saved ${environment} session exists for ${sqlAdapterUi[engine].name}`, true);
+    }
+    applySavedConnectionEntry(engine, entry);
+  } else {
+    const adapter = sqlAdapterUi[engine] || sqlAdapterUi.oracle;
+    $("#sqlPort").value = adapter.port || "";
+    $("#sqlDatabase").value = DB_STUDIO_DEFAULT_DATABASES[engine] || "";
+    if (environment === "DEV" && !$("#sqlHost").value.trim()) $("#sqlHost").value = "localhost";
+    if (environment !== "DEV" && $("#sqlHost").value.trim().toLowerCase() === "localhost") $("#sqlHost").value = "";
+    $("#sqlAuthMode").value = sqlContextOnlyEngines.has(engine) ? "context" : "password";
+    $("#sqlTlsMode").value = environment === "DEV" ? "prefer" : "require";
+  }
+  $("#sqlPassword").value = "";
+  state.connectionSession.restoring = false;
+  disconnectSqlStudio(false);
+  updateConnectionAdapterUi(); updateSnapshotTarget(); updateOracleXrayTarget(); updatePerformanceContextTarget();
+  scheduleConnectionSessionSave();
+  toast(`${environment} ${sqlAdapterUi[engine].name} connection autofilled without secrets`);
+}
+
+function clearDbStudioSecrets() {
+  $("#sqlPassword").value = "";
+  $("#showSqlPassword").textContent = "Show";
+  $("#sqlPassword").type = "password";
+  disconnectSqlStudio(false);
+  toast("Database password cleared from browser memory");
+}
+
+async function validateDbStudioConnection() {
+  const ready = await connectSqlStudio({ silent: false, loadObjects: false });
+  if (ready) toast(`${currentSqlEnvironment()} connection validated`);
+}
+
+async function refreshDbStudioCatalog() {
+  if (!state.sqlStudio.connected || state.sqlStudio.fingerprint !== sqlConnectionFingerprint()) {
+    const ready = await connectSqlStudio({ silent: true, loadObjects: true });
+    if (!ready) return toast("Validate the database connection before refreshing objects", true);
+  } else await loadDatabaseExplorer(false);
+}
+
+function setSqlResultActions(enabled) {
+  ["exportSqlCsv", "exportSqlJson", "copySqlResult"].forEach((id) => { if ($(`#${id}`)) $(`#${id}`).disabled = !enabled; });
+}
+
+function sqlResultObjects() {
+  const result = state.sqlStudio.result;
+  if (!result?.columns?.length) return [];
+  return result.rows.map((row) => Object.fromEntries(result.columns.map((column, index) => [column, row[index] == null ? null : row[index]])));
+}
+
+function csvCell(value) {
+  if (value == null) return "";
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function exportSqlResult(format) {
+  const result = state.sqlStudio.result;
+  if (!result) return toast("Run a SQL statement before exporting results", true);
+  const environment = currentSqlEnvironment().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const engine = $("#sqlEngine").value;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  let content; let type; let extension;
+  if (format === "csv") {
+    content = result.columns.length ? [result.columns.map(csvCell).join(","), ...result.rows.map((row) => row.map(csvCell).join(","))].join("\r\n") : result.raw;
+    type = "text/csv;charset=utf-8"; extension = "csv";
+  } else {
+    content = JSON.stringify(result.columns.length ? sqlResultObjects() : { output: result.raw, messages: result.stderr }, null, 2);
+    type = "application/json;charset=utf-8"; extension = "json";
+  }
+  downloadInvestigationArtifact(`dbridge-${environment}-${engine}-${stamp}.${extension}`, content || "", type);
+  toast(`SQL result exported as ${extension.toUpperCase()}`);
+}
+
+async function copySqlResult() {
+  const result = state.sqlStudio.result;
+  if (!result) return toast("Run a SQL statement before copying results", true);
+  const content = result.columns.length ? [result.columns.join("\t"), ...result.rows.map((row) => row.map((value) => value == null ? "" : String(value)).join("\t"))].join("\n") : result.raw;
+  try { await navigator.clipboard.writeText(content || ""); toast("SQL result copied"); }
+  catch { toast("Clipboard access was blocked", true); }
 }
 
 function updatePort() {
@@ -827,11 +1032,13 @@ function updateConnectionAdapterUi() {
   const access = adapter.driver ? `Bundled driver: ${adapter.driver}.${adapter.client ? ` ${adapter.client} is only an optional fallback for unsupported authentication modes.` : " No external database shell is used."}` : `Approved local client required: ${adapter.client}.`;
   $("#sqlAdapterHint").textContent = `${adapter.hint} ${access} ${contextAuth ? "Authentication uses the existing approved context." : "The password stays only in memory."}`;
   if ($("#validationAdapterName")) $("#validationAdapterName").textContent = adapter.name;
+  renderDbStudioConnector();
+  updateDbStudioAutofillHint();
 }
 
 function sqlConnectionFingerprint(payload = connection()) {
   const c = payload.connection || {};
-  return [payload.engine, c.authMode, c.tlsMode, c.host, c.port, c.database, c.username, c.password].map((value) => String(value || "")).join("\u0000");
+  return [payload.environment, payload.engine, c.authMode, c.tlsMode, c.host, c.port, c.database, c.username, c.password].map((value) => String(value || "")).join("\u0000");
 }
 
 function setSqlStudioConnectionState(status, title, detail) {
@@ -869,13 +1076,13 @@ async function connectSqlStudio(options = {}) {
   const button = $("#connectSqlStudio");
   state.sqlStudio.connecting = true;
   setBusy(button, true, "Connecting…");
-  setSqlStudioConnectionState("connecting", `Connecting to ${adapter.name}`, `${payload.connection.host || "active context"}${payload.connection.database ? ` / ${payload.connection.database}` : ""}`);
+  setSqlStudioConnectionState("connecting", `Connecting to ${adapter.name}`, `${payload.environment} · ${payload.connection.host || "active context"}${payload.connection.database ? ` / ${payload.connection.database}` : ""}`);
   try {
     const result = await api("/api/connections/check", { method: "POST", body: JSON.stringify(payload) });
     state.sqlStudio.fingerprint = sqlConnectionFingerprint(payload);
     const access = result.access === "direct" ? `${adapter.driver} bundled driver` : `${adapter.client} local client`;
     setSqlStudioConnectionState("connected", `${adapter.name} connection ready`, `${result.durationMs.toLocaleString()} ms · ${access} · read-only by default`);
-    $("#databaseExplorerTarget").textContent = `${adapter.name} · ${payload.connection.database || payload.connection.host || "active context"}`;
+    $("#databaseExplorerTarget").textContent = `${payload.environment} · ${adapter.name} · ${payload.connection.database || payload.connection.host || "active context"}`;
     persistConnectionSession(payload.engine, true, false);
     if (!silent) toast(`${adapter.name} connected`);
     if (loadObjects) await loadDatabaseExplorer(true);
@@ -1016,6 +1223,7 @@ function parseSqlResultRows(engine, text) {
 function renderSqlExecutionResult(result, engine) {
   const parsed = parseSqlResultRows(engine, result.stdout);
   state.sqlStudio.result = { ...parsed, raw: result.stdout || "", stderr: result.stderr || "" };
+  setSqlResultActions(true);
   $("#sqlMessages").innerHTML = '<pre class="output-pre"></pre>';
   $("#sqlMessages pre").textContent = [result.stderr, result.stdout].filter(Boolean).join("\n\n") || "Statement completed with no client messages.";
   if (!parsed.columns.length) {
@@ -1093,8 +1301,12 @@ function editorCompletionCatalog(engine) {
   const words = commonSqlCompletionWords.map((word) => ({ label: word, insert: `${word} `, detail: "SQL keyword", type: "sql", platform: "SQL", replaceLine: false, keywords: word }));
   const snippets = commonSqlCompletionSnippets.map(([label, insert, detail]) => ({ label, insert, detail, type: "snippet", platform: "SQL", replaceLine: true, keywords: `${label} sql template` }));
   const database = (databaseSqlCompletionCatalog[engine] || []).map(([label, insert, detail, replaceLine = false]) => ({ label, insert, detail, type: replaceLine ? "snippet" : "sql", platform: String(engine || "sql").toUpperCase(), replaceLine, keywords: `${label} ${engine}` }));
+  const liveObjects = (typeof state !== "undefined" ? state.sqlStudio?.objects || [] : []).slice(0, 750).map((object) => {
+    const qualified = object.schema ? `${object.schema}.${object.name}` : object.name;
+    return { label: qualified, insert: qualified, detail: `${object.type || "OBJECT"} · live database catalog`, type: "sql", platform: "LIVE", replaceLine: false, keywords: `${object.schema || ""} ${object.name} ${object.type || ""}` };
+  });
   const ops = Object.entries(editorCommandTemplateCatalog).flatMap(([platform, items]) => items.map(([label, insert]) => ({ label, insert, detail: "Approved command reference · opens as editor text only", type: "ops", platform: platform.toUpperCase(), replaceLine: true, keywords: `${label} ${platform} ${insert}` })));
-  return [...words, ...snippets, ...database, ...ops];
+  return [...words, ...snippets, ...database, ...liveObjects, ...ops];
 }
 
 function matchEditorCompletions(text, cursor, engine, scope = "all") {
@@ -1363,6 +1575,8 @@ async function runSql() {
     if (!connected) { toast("Connect SQL Studio successfully before running this command", true); return; }
   }
   setBusy(button, true, "Running…");
+  state.sqlStudio.result = null;
+  setSqlResultActions(false);
   $("#sqlResults").innerHTML = '<div class="empty-state"><span>●</span><h3>Executing locally</h3><p>Waiting for the selected database connection…</p></div>';
   showSqlResultView("results");
   const started = performance.now();
@@ -4721,7 +4935,15 @@ function bind() {
   $("#closeShortcutMap").addEventListener("click", closeShortcutMap);
   $("#shortcutMapBackdrop").addEventListener("click", closeShortcutMap);
   $("#shortcutMap").addEventListener("keydown", (event) => { if (event.key === "Escape") { event.preventDefault(); closeShortcutMap(); } });
-  $("#connectionProfileSelect").addEventListener("change", () => applyConnectionProfile($("#connectionProfileSelect").value));
+  $("#connectionProfileSelect").addEventListener("change", () => { applyConnectionProfile($("#connectionProfileSelect").value); updateDbStudioAutofillHint(); });
+  $("#dbStudioAutofillSource").addEventListener("change", updateDbStudioAutofillHint);
+  $("#dbStudioAutofill").addEventListener("click", applyDbStudioAutofill);
+  $("#dbStudioClearSecrets").addEventListener("click", clearDbStudioSecrets);
+  $("#dbStudioValidate").addEventListener("click", validateDbStudioConnection);
+  $("#dbStudioRefreshCatalog").addEventListener("click", refreshDbStudioCatalog);
+  $("#exportSqlCsv").addEventListener("click", () => exportSqlResult("csv"));
+  $("#exportSqlJson").addEventListener("click", () => exportSqlResult("json"));
+  $("#copySqlResult").addEventListener("click", copySqlResult);
   $("#saveConnectionProfile").addEventListener("click", saveConnectionProfile);
   $("#deleteConnectionProfile").addEventListener("click", deleteConnectionProfile);
   document.addEventListener("keydown", (event) => {
@@ -4779,6 +5001,7 @@ function bind() {
     });
   });
   $$("[data-workspace-target], [data-workspace-view]").forEach((button) => button.addEventListener("click", () => openFriendlyWorkspaceTarget(button)));
+  $("#sqlEnvironment").addEventListener("change", sqlEnvironmentChanged);
   $("#sqlEngine").addEventListener("change", sqlConnectionEngineChanged);
   $("#sqlAuthMode").addEventListener("change", () => { if ($("#sqlAuthMode").value === "context") $("#sqlPassword").value = ""; updateConnectionAdapterUi(); disconnectSqlStudio(false); scheduleConnectionSessionSave(); });
   $("#sqlTlsMode").addEventListener("change", () => { disconnectSqlStudio(false); scheduleConnectionSessionSave(); });
@@ -5082,3 +5305,4 @@ function bind() {
 
 bind();
 scanTools();
+loadDbStudioAdapters();

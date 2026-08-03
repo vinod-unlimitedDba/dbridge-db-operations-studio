@@ -3,6 +3,7 @@ const docs = {
   postgres: "https://www.postgresql.org/docs/current/pgstatstatements.html",
   mongodb: "https://www.mongodb.com/docs/manual/reference/database-profiler/",
   mysql: "https://dev.mysql.com/doc/refman/8.4/en/performance-schema-statement-digests.html",
+  mariadb: "https://mariadb.com/docs/server/reference/system-tables/performance-schema/performance-schema-tables/performance-schema-events_statements_summary_by_digest-table",
   sqlserver: "https://learn.microsoft.com/en-us/sql/relational-databases/performance/monitoring-performance-by-using-the-query-store",
 };
 
@@ -302,17 +303,19 @@ export const runtimeTraceCatalog = {
   },
 };
 
+runtimeTraceCatalog.mariadb = {...runtimeTraceCatalog.mysql, name:"MariaDB", doc:docs.mariadb};
+
 export function validateRuntimeTraceInput(engine, identifier, collection = "") {
   const id = String(identifier || "").trim();
   if (!runtimeTraceCatalog[engine]) throw new Error("Select a supported runtime trace engine");
   if (engine === "oracle" && !/^[a-z0-9]{13}$/i.test(id)) throw new Error("Oracle SQL_ID must contain exactly 13 letters or digits");
   if (engine === "postgres" && !/^-?\d{1,20}$/.test(id)) throw new Error("PostgreSQL queryid must be a signed integer with at most 20 digits");
   if (engine === "mongodb" && (!id || id.length > 128 || /[\r\n\0]/.test(id))) throw new Error("MongoDB operation/comment ID must be 1 to 128 safe characters");
-  if (engine === "mysql" && !/^[a-f0-9]{8,64}$/i.test(id)) throw new Error("MySQL digest must contain 8 to 64 hexadecimal characters");
+  if (["mysql","mariadb"].includes(engine) && !/^[a-f0-9]{8,64}$/i.test(id)) throw new Error(`${engine === "mariadb" ? "MariaDB" : "MySQL"} digest must contain 8 to 64 hexadecimal characters`);
   if (engine === "sqlserver" && !/^(?:\d{1,19}|0x[a-f0-9]{16})$/i.test(id)) throw new Error("SQL Server identifier must be a numeric query_id or a 0x-prefixed 16-digit query hash");
   const cleanCollection = String(collection || "").trim();
   if (cleanCollection && (cleanCollection.length > 255 || /[\r\n\0$]/.test(cleanCollection))) throw new Error("Enter a valid MongoDB collection name");
-  return { identifier: engine === "oracle" ? id.toLowerCase() : engine === "mysql" || engine === "sqlserver" ? id.toUpperCase() : id, collection: cleanCollection };
+  return { identifier: engine === "oracle" ? id.toLowerCase() : ["mysql","mariadb"].includes(engine) || engine === "sqlserver" ? id.toUpperCase() : id, collection: cleanCollection };
 }
 
 export function runtimeTraceSql(engine, definition, identifier) {
@@ -415,7 +418,7 @@ db.getCollection("system.profile").find({$or:[
 
 ${collection ? `db.getCollection(${JSON.stringify(collection)}).aggregate([{$planCacheStats:{}},{$limit:100}])` : "// Add a collection name in DBridge to inspect $planCacheStats."}
 // DBridge never enables the profiler or executes explain automatically.`;
-  if (engine === "mysql") return `-- MYSQL PERFORMANCE SCHEMA EVIDENCE (read only)
+  if (["mysql","mariadb"].includes(engine)) return `-- ${engine.toUpperCase()} PERFORMANCE SCHEMA EVIDENCE (read only)
 select * from performance_schema.events_statements_summary_by_digest
 where digest='${identifier}';
 
@@ -501,7 +504,7 @@ export function analyzeRuntimeTrace(engine, identifier, collection, results) {
     const returned = total(profile, "nreturned");
     scanRatio = returned > 0 ? docs / returned : docs;
     if (!profile.length) addFinding(findings, "INFO", "Capture", "No matching profiler history was retained", "system.profile returned no matching event", "The profiler may be disabled, the capped history may have rolled over, or the comment was not present.", "Use application comments consistently and enable profiling only through approved DBA change control.");
-  } else if (engine === "mysql") {
+  } else if (["mysql","mariadb"].includes(engine)) {
     const statement = allRows(results, "statement");
     const history = allRows(results, "history");
     const runtime = allRows(results, "runtime");

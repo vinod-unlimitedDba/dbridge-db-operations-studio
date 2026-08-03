@@ -10,14 +10,18 @@ import { oracleSqlIdCheckCatalog, oracleSqlIdCheckSql, analyzeOracleSqlIdCheck }
 import { oracleBottleneckCatalog, analyzeOracleBottlenecks } from "./oracle-bottleneck.mjs";
 import { postgresBottleneckCatalog, analyzePostgresBottlenecks } from "./postgres-bottleneck.mjs";
 import { mongodbBottleneckCatalog, analyzeMongoBottlenecks } from "./mongodb-bottleneck.mjs";
+import { relationalBottleneckCatalogs, analyzeRelationalBottlenecks } from "./relational-bottleneck.mjs";
 import { runtimeTraceCatalog, validateRuntimeTraceInput, runtimeTraceSql, analyzeRuntimeTrace } from "./runtime-trace.mjs";
-import { SSH_TERMINAL_LIMITS, normalizeSshHost, preflightSshTarget, openSshSession, attachSshStream, writeToSshSession, resizeSshSession, closeSshSession, listSshSessions, closeAllSshSessions } from "./ssh-terminal.mjs";
+import { compareMigrationLogs, migrationLogEngines } from "./migration-log-compare.mjs";
+import { diagnosticStudioCatalog, resolveDiagnosticPlaybook, buildDiagnosticIncidentReport } from "./diagnostic-studio.mjs";
+import { SSH_TERMINAL_LIMITS, normalizeSshHost, preflightSshTarget, forgetSshHostTrust, openSshSession, attachSshStream, writeToSshSession, resizeSshSession, closeSshSession, listSshSessions, openSshLocalForward, closeSshForward, listSshForwards, listSftpDirectory, readSftpFile, closeAllSshSessions } from "./ssh-terminal.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = join(ROOT, "app");
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = Number(process.env.DBRIDGE_PORT || 17864);
 const SESSION_TOKEN = randomBytes(24).toString("hex");
+const OPERATIONS_STUDIO_ORIGINS = new Set(["http://localhost:3000", "http://127.0.0.1:3000"]);
 const MAX_BODY = 8 * 1024 * 1024;
 const MAX_OUTPUT = 2 * 1024 * 1024;
 const MAX_TAIL = 128 * 1024;
@@ -170,7 +174,7 @@ function validatePerformanceRecording(input) {
   const engine = String(input.engine || "").toLowerCase();
   const samples = Array.isArray(input.samples) ? input.samples : [];
   if (!name || name.length > 100 || /[\r\n\0]/.test(name)) throw new Error("Recording name must be between 1 and 100 characters");
-  if (!["oracle", "postgres", "mongodb", "mysql", "sqlserver"].includes(engine)) throw new Error("Flight recording supports the five full-diagnostics engines");
+  if (!["oracle", "postgres", "mongodb", "mysql", "mariadb", "sqlserver"].includes(engine)) throw new Error("Flight recording supports the six full-diagnostics engines");
   if (!samples.length || samples.length > 720) throw new Error("A recording must contain between 1 and 720 samples");
   const allowedMetrics = ["active_sessions", "waiting_sessions", "executions", "avg_elapsed_ms", "logical_reads", "physical_reads", "throughput", "errors"];
   const cleanSamples = samples.map((sample) => ({ collectedAt: new Date(sample.collectedAt || Date.now()).toISOString(), metrics: Object.fromEntries(allowedMetrics.map((key) => [key, Number(sample.metrics?.[key]) || 0])) }));
@@ -279,7 +283,9 @@ const securityHeaders = {
 };
 
 function json(res, statusCode, value) {
-  res.writeHead(statusCode, { ...securityHeaders, "Content-Type": "application/json; charset=utf-8" });
+  const studioOrigin = res.getHeader("Access-Control-Allow-Origin");
+  const corsHeaders = studioOrigin ? { "Access-Control-Allow-Origin": studioOrigin, "Access-Control-Allow-Headers": "Content-Type, X-DBridge-Token", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Max-Age": "600", "Cross-Origin-Resource-Policy": "cross-origin", Vary: "Origin" } : {};
+  res.writeHead(statusCode, { ...securityHeaders, ...corsHeaders, "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(value));
 }
 
@@ -288,9 +294,19 @@ function hasLocalHostHeader(req, port) {
   return host === `${HOST}:${port}` || host === `localhost:${port}`;
 }
 
+function isOperationsStudioOrigin(req) {
+  return OPERATIONS_STUDIO_ORIGINS.has(String(req.headers.origin || ""));
+}
+
+function applyOperationsStudioCors(req, res) {
+  const origin = String(req.headers.origin || "");
+  if (OPERATIONS_STUDIO_ORIGINS.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+}
+
 function isTrusted(req, port) {
-  const origin = req.headers.origin;
-  if (origin && origin !== `http://${HOST}:${port}` && origin !== `http://localhost:${port}`) return false;
+  const origin = String(req.headers.origin || "");
+  const sameOrigin = !origin || origin === `http://${HOST}:${port}` || origin === `http://localhost:${port}`;
+  if (!sameOrigin && !isOperationsStudioOrigin(req)) return false;
   return req.headers["x-dbridge-token"] === SESSION_TOKEN;
 }
 
@@ -620,7 +636,9 @@ async function collectMongoBottleneckEvidence(input, focus = {}) {
   };
   try {
     await client.connect();
-    for (const definition of mongodbBottleneckCatalog) {
+    const requestedCheckIds = new Set(Array.isArray(focus.checkIds) ? focus.checkIds.map((value) => String(value)) : []);
+    const definitions = requestedCheckIds.size ? mongodbBottleneckCatalog.filter((definition) => requestedCheckIds.has(definition.id)) : mongodbBottleneckCatalog;
+    for (const definition of definitions) {
       if (definition.requiresCollection && !focus.collection) {
         results.push({ id: definition.id, label: definition.label, phase: definition.phase, guidance: definition.guidance, ok: false, skipped: true, durationMs: 0, rows: [], error: "Optional collection not supplied; server-wide checks continued" });
         continue;
@@ -904,6 +922,81 @@ async function executeDatabaseQuery(input, sql, timeoutMs = 45000) {
   const spec = connectionCommand(input, sql);
   const result = await run(spec.command, spec.args, { stdin: spec.stdin, env: spec.env, timeoutMs });
   return { ...result, access: "client", command: spec.command };
+}
+
+
+function validateDiagnosticStudioIdentifier(engine, value) {
+  const identifier = String(value || "").trim();
+  if (!identifier) return "";
+  if (engine === "oracle" && !/^[a-z0-9]{13}$/i.test(identifier)) throw new Error("Oracle SQL_ID must contain exactly 13 letters or digits");
+  if (engine === "postgres" && !/^-?\d{1,20}$/.test(identifier)) throw new Error("PostgreSQL queryid must be a signed integer with at most 20 digits");
+  if (["mysql", "mariadb"].includes(engine) && !/^[a-f0-9]{64}$/i.test(identifier)) throw new Error(`${engine === "mariadb" ? "MariaDB" : "MySQL"} statement digest must contain exactly 64 hexadecimal characters`);
+  if (engine === "sqlserver" && !/^0x[a-f0-9]{16}$/i.test(identifier)) throw new Error("SQL Server query hash must use the 0x prefix followed by exactly 16 hexadecimal characters");
+  if (engine === "mongodb" && (identifier.length > 128 || /[\r\n\0]/.test(identifier))) throw new Error("MongoDB operation/comment focus must be at most 128 characters");
+  return engine === "oracle" ? identifier.toLowerCase() : identifier;
+}
+
+async function collectDiagnosticStudioEvidence(input, engine, playbookId, identifier, packScope) {
+  const catalogs = {
+    oracle: oracleBottleneckCatalog,
+    postgres: postgresBottleneckCatalog,
+    mongodb: mongodbBottleneckCatalog,
+    mysql: relationalBottleneckCatalogs.mysql,
+    mariadb: relationalBottleneckCatalogs.mariadb,
+    sqlserver: relationalBottleneckCatalogs.sqlserver,
+  };
+  const { playbook, selected } = resolveDiagnosticPlaybook(engine, playbookId, catalogs[engine]);
+  const selectedIds = selected.map((definition) => definition.id);
+  if (engine === "mongodb") {
+    const collection = String(input.collection || "").trim();
+    if (collection && (collection.length > 255 || /[\r\n\0$]/.test(collection))) throw new Error("Enter a valid MongoDB collection name");
+    const results = await collectMongoBottleneckEvidence(input, { operationId: identifier, collection, checkIds: selectedIds });
+    return { playbook, results, analysis: analyzeMongoBottlenecks(results, { operationId: identifier, collection }) };
+  }
+  const timeoutMs = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
+  const results = [];
+  let serverVersion = 0;
+  const allowedOracleLicenses = packScope === "tuning" ? new Set(["core", "diagnostics", "tuning"]) : packScope === "diagnostics" ? new Set(["core", "diagnostics"]) : new Set(["core"]);
+  for (const definition of selected) {
+    const common = { id: definition.id, label: definition.label, phase: definition.phase, guidance: definition.guidance, license: definition.license };
+    if (engine === "oracle" && !allowedOracleLicenses.has(definition.license || "core")) {
+      results.push({ ...common, ok: false, skipped: true, durationMs: 0, rows: [], error: `${definition.license === "tuning" ? "Tuning" : "Diagnostics"} Pack scope was not selected` });
+      continue;
+    }
+    const requiresIdentifier = definition.requiresSqlId || definition.requiresQueryId || definition.requiresIdentifier;
+    if (requiresIdentifier && !identifier) {
+      results.push({ ...common, ok: false, skipped: true, durationMs: 0, rows: [], error: "Optional statement identifier not supplied; incident-wide checks continued" });
+      continue;
+    }
+    if (engine === "postgres" && definition.minVersion && (!serverVersion || serverVersion < definition.minVersion)) {
+      results.push({ ...common, ok: false, skipped: true, durationMs: 0, rows: [], error: serverVersion ? `Requires PostgreSQL ${Math.floor(definition.minVersion / 10000)} or newer` : "Server version was unavailable; version-specific check skipped" });
+      continue;
+    }
+    if (engine === "postgres" && definition.maxVersion && serverVersion && serverVersion > definition.maxVersion) {
+      results.push({ ...common, ok: false, skipped: true, durationMs: 0, rows: [], error: `Used only through PostgreSQL ${Math.floor(definition.maxVersion / 10000)}` });
+      continue;
+    }
+    const started = Date.now();
+    try {
+      let sql = definition.sql;
+      if (definition.requiresSqlId) sql = sql.replaceAll("__SQL_ID__", identifier);
+      if (definition.requiresQueryId) sql = sql.replaceAll("__QUERY_ID__", identifier);
+      if (definition.requiresIdentifier) sql = sql.replaceAll("__IDENTIFIER__", identifier);
+      const result = await executeDatabaseQuery({ ...input, engine }, sql, timeoutMs);
+      const rows = Array.isArray(result.rows) ? result.rows.slice(0, 250) : [];
+      const ok = result.code === 0;
+      results.push({ ...common, ok, skipped: false, durationMs: Date.now() - started, rowCount: Number(result.rowCount ?? rows.length), rows, error: ok ? undefined : String(result.stderr || result.stdout || `${definition.label} evidence query failed`).slice(0, 2000) });
+      if (engine === "postgres" && definition.id === "environment" && ok) serverVersion = Number(rows[0]?.server_version_num || 0);
+    } catch (error) {
+      results.push({ ...common, ok: false, skipped: false, durationMs: Date.now() - started, rows: [], error: String(error instanceof Error ? error.message : error).slice(0, 2000) });
+    }
+  }
+  const analysis = engine === "oracle"
+    ? analyzeOracleBottlenecks(results, identifier, packScope)
+    : engine === "postgres"
+      ? analyzePostgresBottlenecks(results, identifier)
+      : analyzeRelationalBottlenecks(engine, results, identifier);
+  return { playbook, results, analysis, serverVersion };
 }
 
 async function validateDirectDatabase(input) {
@@ -1456,12 +1549,14 @@ const tuningChecks = {
   },
 };
 
+tuningChecks.mariadb = tuningChecks.mysql;
+
 function diagnosticSql(engine, identifier) {
   if (!/^[A-Za-z0-9_.:$-]{1,64}$/.test(identifier)) throw new Error("Invalid SQL identifier");
   if (engine === "oracle") return `select sql_id, plan_hash_value, executions, round(elapsed_time/1000000,3) elapsed_seconds, round(cpu_time/1000000,3) cpu_seconds, buffer_gets, disk_reads, rows_processed, last_active_time from v$sql where sql_id='${identifier}' order by last_active_time desc fetch first 10 rows only`;
   if (engine === "postgres") return `select queryid, calls, round(total_exec_time::numeric,2) total_ms, round(mean_exec_time::numeric,2) mean_ms, rows, shared_blks_hit, shared_blks_read, temp_blks_written, left(query,300) query from pg_stat_statements where queryid::text='${identifier}' order by total_exec_time desc limit 10`;
   if (engine === "mongodb") return `JSON.stringify(db.currentOp({$or:[{opid:${JSON.stringify(identifier)}},{"command.comment":${JSON.stringify(identifier)}}]}), null, 2)`;
-  if (engine === "mysql") return `select schema_name, digest, count_star, round(sum_timer_wait/1000000000000,3) total_seconds, round(avg_timer_wait/1000000000,3) avg_ms, sum_rows_examined, sum_rows_sent, left(digest_text,500) digest_text from performance_schema.events_statements_summary_by_digest where digest='${identifier}' order by sum_timer_wait desc limit 10`;
+  if (["mysql","mariadb"].includes(engine)) return `select schema_name, digest, count_star, round(sum_timer_wait/1000000000000,3) total_seconds, round(avg_timer_wait/1000000000,3) avg_ms, sum_rows_examined, sum_rows_sent, left(digest_text,500) digest_text from performance_schema.events_statements_summary_by_digest where digest='${identifier}' order by sum_timer_wait desc limit 10`;
   if (engine === "sqlserver") return `select top (10) convert(varchar(66),qs.query_hash,1) query_hash, qs.execution_count, qs.total_worker_time, qs.total_elapsed_time, qs.total_logical_reads, qs.total_physical_reads, qs.total_rows, qs.last_execution_time, left(st.text,1000) sql_text from sys.dm_exec_query_stats qs cross apply sys.dm_exec_sql_text(qs.sql_handle) st where convert(varchar(66),qs.query_hash,1)='${identifier}' order by qs.total_elapsed_time desc`;
   throw new Error("Diagnostics support Oracle SQL_ID, PostgreSQL queryid, MongoDB operation/comment IDs, MySQL digests and SQL Server query hashes.");
 }
@@ -1471,6 +1566,7 @@ const recommendationCatalog = {
   postgres: { name: "PostgreSQL", identifier: "queryid", source: "pg_stat_statements", planAction: "Capture EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS) in an authorized non-production session. Compare estimates, actual rows, loops, spills and scan choices before changing indexes or SQL." },
   mongodb: { name: "MongoDB", identifier: "operation or comment ID", source: "currentOp", planAction: "Run explain('executionStats') for the matching operation in an authorized environment. Compare winning plan, keys examined, documents examined, returned documents and lock behavior." },
   mysql: { name: "MySQL", identifier: "statement digest", source: "performance_schema", planAction: "Use EXPLAIN ANALYZE in an authorized test session. Review estimated versus actual rows, chosen indexes, temporary tables and sort behavior before applying a change." },
+  mariadb: { name: "MariaDB", identifier: "statement digest", source: "performance_schema", planAction: "Use ANALYZE or EXPLAIN in an authorized test session. Review estimated versus observed rows, chosen indexes, temporary tables and sort behavior before applying a change." },
   sqlserver: { name: "SQL Server", identifier: "query hash", source: "sys.dm_exec_query_stats", planAction: "Inspect the actual execution plan and Query Store history. Compare estimates, spills, warnings, memory grant, parameter sensitivity and plan changes before forcing or indexing." },
 };
 
@@ -1482,7 +1578,7 @@ function recommendationSql(engine, identifier) {
     const id = JSON.stringify(identifier);
     return `JSON.stringify((()=>{const id=${id};const ids=[id];if(/^\\d+$/.test(id))ids.push(Number(id));const r=db.currentOp({$or:[{opid:{$in:ids}},{"command.comment":id}]});const ops=Array.isArray(r.inprog)?r.inprog:[];const sum=(key)=>ops.reduce((n,o)=>n+(Number(o[key])||0),0);return {matched:ops.length,executions:ops.length,elapsed_ms:ops.reduce((n,o)=>n+(Number(o.microsecs_running)||Number(o.secs_running)*1000000||0)/1000,0),rows_processed:sum("nreturned"),examined_rows:sum("docsExamined"),waiting_locks:ops.filter(o=>o.waitingForLock===true).length,collection_scans:ops.filter(o=>String(o.planSummary||"").toUpperCase().includes("COLLSCAN")).length,max_runtime_seconds:ops.reduce((n,o)=>Math.max(n,Number(o.secs_running)||0),0)};})(),null,2)`;
   }
-  if (engine === "mysql") return `with q as (select count(*) matched, coalesce(sum(count_star),0) executions, coalesce(sum(sum_timer_wait)/1000000000,0) elapsed_ms, coalesce(sum(sum_rows_examined),0) examined_rows, coalesce(sum(sum_rows_sent),0) rows_processed, coalesce(sum(sum_created_tmp_disk_tables),0) temp_writes, coalesce(sum(sum_lock_time)/1000000000,0) lock_ms, coalesce(sum(sum_no_index_used),0) no_index from performance_schema.events_statements_summary_by_digest where digest='${identifier}') select concat('matched=',matched) metric from q union all select concat('executions=',executions) from q union all select concat('elapsed_ms=',elapsed_ms) from q union all select concat('examined_rows=',examined_rows) from q union all select concat('rows_processed=',rows_processed) from q union all select concat('temp_writes=',temp_writes) from q union all select concat('lock_ms=',lock_ms) from q union all select concat('no_index=',no_index) from q`;
+  if (["mysql","mariadb"].includes(engine)) return `with q as (select count(*) matched, coalesce(sum(count_star),0) executions, coalesce(sum(sum_timer_wait)/1000000000,0) elapsed_ms, coalesce(sum(sum_rows_examined),0) examined_rows, coalesce(sum(sum_rows_sent),0) rows_processed, coalesce(sum(sum_created_tmp_disk_tables),0) temp_writes, coalesce(sum(sum_lock_time)/1000000000,0) lock_ms, coalesce(sum(sum_no_index_used),0) no_index from performance_schema.events_statements_summary_by_digest where digest='${identifier}') select concat('matched=',matched) metric from q union all select concat('executions=',executions) from q union all select concat('elapsed_ms=',elapsed_ms) from q union all select concat('examined_rows=',examined_rows) from q union all select concat('rows_processed=',rows_processed) from q union all select concat('temp_writes=',temp_writes) from q union all select concat('lock_ms=',lock_ms) from q union all select concat('no_index=',no_index) from q`;
   if (engine === "sqlserver") return `with q as (select count(*) matched, coalesce(sum(cast(execution_count as decimal(38,2))),0) executions, coalesce(sum(cast(total_elapsed_time as decimal(38,2)))/1000,0) elapsed_ms, coalesce(sum(cast(total_worker_time as decimal(38,2)))/1000,0) cpu_ms, coalesce(sum(cast(total_logical_reads as decimal(38,2))),0) logical_reads, coalesce(sum(cast(total_physical_reads as decimal(38,2))),0) physical_reads, coalesce(sum(cast(total_rows as decimal(38,2))),0) rows_processed, coalesce(max(plan_generation_num),0) plan_versions from sys.dm_exec_query_stats where convert(varchar(66),query_hash,1)='${identifier}') select concat('matched=',matched) metric from q union all select concat('executions=',executions) from q union all select concat('elapsed_ms=',elapsed_ms) from q union all select concat('cpu_ms=',cpu_ms) from q union all select concat('logical_reads=',logical_reads) from q union all select concat('physical_reads=',physical_reads) from q union all select concat('rows_processed=',rows_processed) from q union all select concat('plan_versions=',plan_versions) from q`;
   throw new Error("Recommendations support Oracle SQL_ID, PostgreSQL queryid, MongoDB operation/comment IDs, MySQL digests and SQL Server query hashes.");
 }
@@ -1589,7 +1685,7 @@ function performanceSampleSql(engine) {
   if (engine === "oracle") return "with a as (select count(*) active_sessions, sum(case when state='WAITING' and wait_class<>'Idle' then 1 else 0 end) waiting_sessions from v$session where status='ACTIVE' and type='USER'), q as (select nvl(sum(executions),0) executions, nvl(sum(elapsed_time)/1000/nullif(sum(executions),0),0) avg_elapsed_ms, nvl(sum(buffer_gets),0) logical_reads, nvl(sum(disk_reads),0) physical_reads from v$sql where last_active_time > sysdate-5/1440) select 'active_sessions='||active_sessions metric from a union all select 'waiting_sessions='||waiting_sessions from a union all select 'executions='||executions from q union all select 'avg_elapsed_ms='||avg_elapsed_ms from q union all select 'logical_reads='||logical_reads from q union all select 'physical_reads='||physical_reads from q union all select 'throughput='||executions from q union all select 'errors=0' from dual";
   if (engine === "postgres") return "with a as (select count(*) filter(where state='active') active_sessions, count(*) filter(where state='active' and wait_event_type is not null) waiting_sessions from pg_stat_activity where pid<>pg_backend_pid()), q as (select coalesce(sum(calls),0) executions, coalesce(sum(total_exec_time)/nullif(sum(calls),0),0) avg_elapsed_ms, coalesce(sum(shared_blks_hit+shared_blks_read),0) logical_reads, coalesce(sum(shared_blks_read),0) physical_reads from pg_stat_statements) select 'active_sessions='||active_sessions::text metric from a union all select 'waiting_sessions='||waiting_sessions::text from a union all select 'executions='||executions::text from q union all select 'avg_elapsed_ms='||avg_elapsed_ms::text from q union all select 'logical_reads='||logical_reads::text from q union all select 'physical_reads='||physical_reads::text from q union all select 'throughput='||executions::text from q union all select 'errors='||coalesce((select sum(xact_rollback+deadlocks) from pg_stat_database),0)::text";
   if (engine === "mongodb") return "JSON.stringify((()=>{const s=db.serverStatus();const ops=Object.values(s.opcounters||{}).reduce((n,v)=>n+(Number(v)||0),0);const lat=s.opLatencies||{};const latencyOps=Object.values(lat).reduce((n,v)=>n+(Number(v&&v.ops)||0),0);const latencyMicros=Object.values(lat).reduce((n,v)=>n+(Number(v&&v.latency)||0),0);const current=db.currentOp({active:true});const active=Array.isArray(current.inprog)?current.inprog:[];return {active_sessions:active.length,waiting_sessions:active.filter(o=>o.waitingForLock===true).length,executions:ops,avg_elapsed_ms:latencyOps?latencyMicros/latencyOps/1000:0,logical_reads:0,physical_reads:0,throughput:ops,errors:Number(s.asserts&&s.asserts.regular||0)+Number(s.asserts&&s.asserts.warning||0)};})(),null,2)";
-  if (engine === "mysql") return "with a as (select count(*) active_sessions, sum(processlist_state is not null and processlist_command<>'Sleep') waiting_sessions from performance_schema.threads where processlist_id is not null and processlist_command<>'Sleep'), q as (select coalesce(sum(count_star),0) executions, coalesce(sum(sum_timer_wait)/1000000000/nullif(sum(count_star),0),0) avg_elapsed_ms, coalesce(sum(sum_rows_examined),0) logical_reads, 0 physical_reads, coalesce(sum(sum_errors),0) errors from performance_schema.events_statements_summary_by_digest) select concat('active_sessions=',active_sessions) metric from a union all select concat('waiting_sessions=',waiting_sessions) from a union all select concat('executions=',executions) from q union all select concat('avg_elapsed_ms=',avg_elapsed_ms) from q union all select concat('logical_reads=',logical_reads) from q union all select concat('physical_reads=',physical_reads) from q union all select concat('throughput=',executions) from q union all select concat('errors=',errors) from q";
+  if (["mysql","mariadb"].includes(engine)) return "with a as (select count(*) active_sessions, sum(processlist_state is not null and processlist_command<>'Sleep') waiting_sessions from performance_schema.threads where processlist_id is not null and processlist_command<>'Sleep'), q as (select coalesce(sum(count_star),0) executions, coalesce(sum(sum_timer_wait)/1000000000/nullif(sum(count_star),0),0) avg_elapsed_ms, coalesce(sum(sum_rows_examined),0) logical_reads, 0 physical_reads, coalesce(sum(sum_errors),0) errors from performance_schema.events_statements_summary_by_digest) select concat('active_sessions=',active_sessions) metric from a union all select concat('waiting_sessions=',waiting_sessions) from a union all select concat('executions=',executions) from q union all select concat('avg_elapsed_ms=',avg_elapsed_ms) from q union all select concat('logical_reads=',logical_reads) from q union all select concat('physical_reads=',physical_reads) from q union all select concat('throughput=',executions) from q union all select concat('errors=',errors) from q";
   if (engine === "sqlserver") return "with a as (select count(*) active_sessions, sum(case when wait_type is not null then 1 else 0 end) waiting_sessions from sys.dm_exec_requests where session_id<>@@spid), q as (select coalesce(sum(cast(execution_count as decimal(38,2))),0) executions, coalesce(sum(cast(total_elapsed_time as decimal(38,2)))/1000/nullif(sum(cast(execution_count as decimal(38,2))),0),0) avg_elapsed_ms, coalesce(sum(cast(total_logical_reads as decimal(38,2))),0) logical_reads, coalesce(sum(cast(total_physical_reads as decimal(38,2))),0) physical_reads from sys.dm_exec_query_stats) select concat('active_sessions=',active_sessions) metric from a union all select concat('waiting_sessions=',waiting_sessions) from a union all select concat('executions=',executions) from q union all select concat('avg_elapsed_ms=',avg_elapsed_ms) from q union all select concat('logical_reads=',logical_reads) from q union all select concat('physical_reads=',physical_reads) from q union all select concat('throughput=',executions) from q union all select 'errors=0'";
   throw new Error("Performance recording supports Oracle, PostgreSQL, MongoDB, MySQL, and SQL Server");
 }
@@ -1624,7 +1720,7 @@ function normalizeCapturedPlan(engine, stdout) {
     return start >= 0 && end > start ? output.slice(start, end + 14).replaceAll('""', '"') : output;
   }
   if (engine === "postgres") return parseCsvText(output)[1]?.[0] || output;
-  if (engine === "mysql") return output.split(/\r?\n/).slice(1).join("\n").replaceAll("\\n", "\n").replaceAll("\\t", "\t").replaceAll('\\"', '"') || output;
+  if (["mysql","mariadb"].includes(engine)) return output.split(/\r?\n/).slice(1).join("\n").replaceAll("\\n", "\n").replaceAll("\\t", "\t").replaceAll('\\"', '"') || output;
   return output;
 }
 
@@ -1640,7 +1736,7 @@ async function capturePlanForIdentifier(input, engine, identifier) {
     const directPlan = result.access === "direct" && engine === "oracle" ? result.rows.map((row) => Object.values(row)[0]).join("\n") : result.access === "direct" && engine === "sqlserver" ? String(Object.values(result.rows[0] || {})[0] || "") : result.stdout;
     return { planText: normalizeCapturedPlan(engine, directPlan), source: engine === "oracle" ? "DBMS_XPLAN.DISPLAY_CURSOR" : engine === "sqlserver" ? "sys.dm_exec_query_plan" : "MongoDB system.profile", ...result };
   }
-  if (!["postgres", "mysql"].includes(engine)) throw new Error("Direct plan capture supports the five full-diagnostics engines");
+  if (!["postgres", "mysql", "mariadb"].includes(engine)) throw new Error("Direct plan capture supports the six full-diagnostics engines");
   const statementSql = engine === "postgres" ? `select query from pg_stat_statements where queryid::text='${identifier}' order by total_exec_time desc limit 1` : `select sql_text from performance_schema.events_statements_history_long where digest='${identifier}' and sql_text is not null order by timer_end desc limit 1`;
   const statementResult = await executeDatabaseQuery(input, statementSql, input.timeoutMs || 45000);
   if (statementResult.code !== 0) throw new Error(statementResult.stderr || statementResult.stdout || "Statement text could not be captured");
@@ -1659,7 +1755,7 @@ function planHistorySql(engine, identifier) {
   if (engine === "oracle") return `select child_number, plan_hash_value, executions, round(elapsed_time/1000/nullif(executions,0),2) avg_elapsed_ms, is_bind_sensitive, is_bind_aware, is_shareable, loads, invalidations, last_active_time from v$sql where sql_id='${identifier}' order by last_active_time desc`;
   if (engine === "postgres") return `select queryid, calls, plans, round(total_plan_time::numeric,2) total_plan_ms, round(mean_plan_time::numeric,2) mean_plan_ms, round(mean_exec_time::numeric,2) mean_exec_ms, rows, left(query,500) query from pg_stat_statements where queryid::text='${identifier}'`;
   if (engine === "mongodb") return `JSON.stringify(db.getCollection('system.profile').find({$or:[{opid:${JSON.stringify(identifier)}},{"command.comment":${JSON.stringify(identifier)}}]},{ts:1,ns:1,millis:1,planSummary:1,keysExamined:1,docsExamined:1,nreturned:1}).sort({ts:-1}).limit(30).toArray(),null,2)`;
-  if (engine === "mysql") return `select event_id, timer_start, round(timer_wait/1000000000,3) elapsed_ms, rows_examined, rows_sent, rows_affected, no_index_used, no_good_index_used, left(sql_text,500) sql_text from performance_schema.events_statements_history_long where digest='${identifier}' order by timer_end desc limit 30`;
+  if (["mysql","mariadb"].includes(engine)) return `select event_id, timer_start, round(timer_wait/1000000000,3) elapsed_ms, rows_examined, rows_sent, rows_affected, no_index_used, no_good_index_used, left(sql_text,500) sql_text from performance_schema.events_statements_history_long where digest='${identifier}' order by timer_end desc limit 30`;
   if (engine === "sqlserver") return `select top (50) convert(varchar(66),q.query_hash,1) query_hash, p.plan_id, p.is_forced_plan, p.force_failure_count, p.last_force_failure_reason_desc, rs.count_executions, cast(rs.avg_duration/1000.0 as decimal(18,2)) avg_duration_ms, cast(rs.avg_cpu_time/1000.0 as decimal(18,2)) avg_cpu_ms, rs.avg_logical_io_reads, rsi.start_time, rsi.end_time from sys.query_store_query q join sys.query_store_plan p on p.query_id=q.query_id join sys.query_store_runtime_stats rs on rs.plan_id=p.plan_id join sys.query_store_runtime_stats_interval rsi on rsi.runtime_stats_interval_id=rs.runtime_stats_interval_id where convert(varchar(66),q.query_hash,1)='${identifier}' order by rsi.end_time desc`;
   throw new Error("Plan history supports the five full-diagnostics engines");
 }
@@ -1918,9 +2014,256 @@ async function openBrowser(url) {
   child.unref();
 }
 
+function mongoStudioCollectionName(value, required = true) {
+  const name = String(value || "").trim();
+  if (required && !name) throw new Error("Select a MongoDB collection");
+  if (name && (!/^[A-Za-z0-9_$.-]{1,255}$/.test(name) || name.includes(".."))) throw new Error("Enter a valid MongoDB collection name");
+  return name;
+}
+
+async function openMongoStudioConnection(input, appName = "DBridge-MongoDB-Studio") {
+  const connection = normalizeDatabaseConnection({ ...input, engine: "mongodb" });
+  const module = await directDriverModule("mongodb");
+  if (!module?.MongoClient) throw new Error("The bundled MongoDB driver is unavailable");
+  const auth = connection.authMode === "password" && connection.username ? `${encodeURIComponent(connection.username)}:${encodeURIComponent(connection.password)}@` : "";
+  const uri = `mongodb://${auth}${connection.host}:${connection.port}/${connection.database || "admin"}`;
+  const timeout = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
+  const options = { appName, serverSelectionTimeoutMS: timeout, connectTimeoutMS: timeout, socketTimeoutMS: timeout, maxPoolSize: 4 };
+  if (connection.tlsMode === "require") options.tls = true;
+  if (connection.tlsMode === "disable") options.tls = false;
+  const client = new module.MongoClient(uri, options);
+  await client.connect();
+  return { client, database: client.db(connection.database || "admin"), connection, timeout };
+}
+
+function mongoStudioType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (value instanceof Date) return "date";
+  if (Buffer.isBuffer(value)) return "binary";
+  if (value && typeof value === "object" && value._bsontype) return String(value._bsontype).toLowerCase();
+  return typeof value === "object" ? "document" : typeof value;
+}
+
+function mongoStudioSample(value) {
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
+  if (typeof value === "string") return value.slice(0, 90);
+  if (["number", "boolean", "bigint"].includes(typeof value)) return String(value);
+  try { return JSON.stringify(value, directJsonReplacer).slice(0, 140); }
+  catch { return String(value).slice(0, 140); }
+}
+
+function analyzeMongoStudioSchema(documents) {
+  const fields = new Map();
+  const visit = (document, prefix = "", depth = 0) => {
+    if (!document || typeof document !== "object" || Array.isArray(document) || depth > 5) return;
+    for (const [key, value] of Object.entries(document)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      const field = fields.get(path) || { path, present: 0, types: new Map(), samples: new Set(), minimum: null, maximum: null };
+      const type = mongoStudioType(value);
+      field.present += 1;
+      field.types.set(type, (field.types.get(type) || 0) + 1);
+      if (field.samples.size < 6) field.samples.add(mongoStudioSample(value));
+      if (typeof value === "number" && Number.isFinite(value)) {
+        field.minimum = field.minimum == null ? value : Math.min(field.minimum, value);
+        field.maximum = field.maximum == null ? value : Math.max(field.maximum, value);
+      }
+      fields.set(path, field);
+      if (type === "document") visit(value, path, depth + 1);
+      if (type === "array") value.slice(0, 12).forEach((item) => { if (mongoStudioType(item) === "document") visit(item, `${path}[]`, depth + 1); });
+    }
+  };
+  documents.forEach((document) => visit(document));
+  return [...fields.values()].map((field) => ({
+    path: field.path,
+    presencePercent: documents.length ? Math.round(field.present / documents.length * 1000) / 10 : 0,
+    cardinalityInSample: field.samples.size,
+    types: Object.fromEntries([...field.types.entries()].map(([type, count]) => [type, { count, percent: Math.round(count / field.present * 1000) / 10 }])),
+    samples: [...field.samples],
+    minimum: field.minimum,
+    maximum: field.maximum,
+  })).sort((left, right) => left.path.localeCompare(right.path));
+}
+
+async function mongoStudioManifest(database, timeout) {
+  const collections = (await database.listCollections({}, { nameOnly: false }).toArray()).filter((item) => item.type !== "view").slice(0, 120);
+  const rows = await Promise.all(collections.map(async (item) => {
+    try {
+      const collection = database.collection(item.name);
+      const [count, indexes, stats] = await Promise.all([
+        collection.estimatedDocumentCount({ maxTimeMS: timeout }),
+        collection.listIndexes({ maxTimeMS: timeout }).toArray(),
+        database.command({ collStats: item.name, scale: 1024 * 1024 }, { maxTimeMS: timeout }),
+      ]);
+      return { collection: item.name, count, indexes: indexes.length, sizeMB: Number(stats.size || 0), storageMB: Number(stats.storageSize || 0), indexMB: Number(stats.totalIndexSize || 0), ok: true };
+    } catch (error) {
+      return { collection: item.name, count: null, indexes: null, sizeMB: null, storageMB: null, indexMB: null, ok: false, error: String(error instanceof Error ? error.message : error).slice(0, 500) };
+    }
+  }));
+  return rows;
+}
+
+async function compareMongoStudioMirror(input) {
+  const sourceSession = await openMongoStudioConnection(input, "DBridge-Mirror-Source");
+  let destinationSession;
+  try {
+    destinationSession = await openMongoStudioConnection({ engine: "mongodb", connection: input.destination || {}, timeoutMs: input.timeoutMs }, "DBridge-Mirror-Destination");
+    const [sourceManifest, destinationManifest] = await Promise.all([
+      mongoStudioManifest(sourceSession.database, sourceSession.timeout),
+      mongoStudioManifest(destinationSession.database, destinationSession.timeout),
+    ]);
+    const sourceMap = new Map(sourceManifest.map((item) => [item.collection, item]));
+    const destinationMap = new Map(destinationManifest.map((item) => [item.collection, item]));
+    const names = [...new Set([...sourceMap.keys(), ...destinationMap.keys()])].sort();
+    const collections = names.map((name) => {
+      const source = sourceMap.get(name); const destination = destinationMap.get(name);
+      const status = !source ? "destination-only" : !destination ? "missing-destination" : !source.ok || !destination.ok ? "check" : source.count === destination.count && source.indexes === destination.indexes ? "matched" : "drift";
+      return { collection: name, status, source, destination, countDelta: source?.count != null && destination?.count != null ? destination.count - source.count : null, indexDelta: source?.indexes != null && destination?.indexes != null ? destination.indexes - source.indexes : null };
+    });
+    return {
+      ok: true,
+      mode: "mirror",
+      source: { host: sourceSession.connection.host, database: sourceSession.connection.database || "admin" },
+      destination: { host: destinationSession.connection.host, database: destinationSession.connection.database || "admin" },
+      summary: { collections: collections.length, matched: collections.filter((item) => item.status === "matched").length, drift: collections.filter((item) => item.status === "drift").length, missing: collections.filter((item) => item.status.includes("missing") || item.status.includes("only")).length, checks: collections.filter((item) => item.status === "check").length },
+      collections,
+      comparedAt: new Date().toISOString(),
+      note: "Counts are estimated metadata. Validate business-critical collections with mongosync's embedded verifier before cutover.",
+    };
+  } finally {
+    await sourceSession.client.close().catch(() => {});
+    if (destinationSession) await destinationSession.client.close().catch(() => {});
+  }
+}
+
+async function runMongoStudioAction(input) {
+  const action = String(input.action || "overview");
+  const allowed = new Set(["overview", "documents", "aggregation", "schema", "indexes", "validation", "explain", "performance", "mirror"]);
+  if (!allowed.has(action)) throw new Error("Unsupported MongoDB Studio operation");
+  if (action === "mirror") return compareMongoStudioMirror(input);
+  const session = await openMongoStudioConnection(input);
+  const { client, database, connection, timeout } = session;
+  const collectionName = mongoStudioCollectionName(input.collection, action !== "overview" && action !== "performance");
+  const limit = Math.min(Math.max(Number(input.limit || 50), 1), 1000);
+  const filter = safeMongoLiteral(input.filter, {});
+  const projection = safeMongoLiteral(input.projection, {});
+  const sort = safeMongoLiteral(input.sort, {});
+  const started = Date.now();
+  try {
+    if (action === "overview") {
+      const [manifest, dbStats, hello, build] = await Promise.all([
+        mongoStudioManifest(database, timeout),
+        database.command({ dbStats: 1, scale: 1024 * 1024 }, { maxTimeMS: timeout }),
+        database.admin().command({ hello: 1 }, { maxTimeMS: timeout }),
+        database.admin().command({ buildInfo: 1 }, { maxTimeMS: timeout }),
+      ]);
+      return { ok: true, action, database: connection.database || "admin", role: hello.msg === "isdbgrid" ? "mongos" : hello.setName ? "replica set" : "standalone", setName: hello.setName || null, version: build.version, metrics: { collections: manifest.length, objects: dbStats.objects, dataMB: dbStats.dataSize, storageMB: dbStats.storageSize, indexMB: dbStats.indexSize, views: dbStats.views || 0 }, collections: manifest, durationMs: Date.now() - started };
+    }
+    const collection = database.collection(collectionName);
+    if (action === "documents") {
+      const cursor = collection.find(filter, { projection, maxTimeMS: timeout }).sort(sort).limit(limit);
+      const documents = await cursor.toArray();
+      return { ok: true, action, collection: collectionName, documents, count: documents.length, limit, durationMs: Date.now() - started };
+    }
+    if (action === "aggregation") {
+      const pipeline = safeMongoLiteral(input.pipeline, []);
+      if (!Array.isArray(pipeline)) throw new Error("Aggregation pipeline must be a JSON array");
+      const serialized = JSON.stringify(pipeline);
+      if (/\$(?:out|merge|changeStream|changeStreamSplitLargeEvent)\b/i.test(serialized)) throw new Error("Mutating or streaming aggregation stages are blocked in this read-only workspace");
+      const documents = await collection.aggregate([...pipeline, { $limit: limit }], { maxTimeMS: timeout, allowDiskUse: false }).toArray();
+      return { ok: true, action, collection: collectionName, pipeline, documents, count: documents.length, durationMs: Date.now() - started };
+    }
+    if (action === "schema") {
+      const sampleSize = Math.min(Math.max(Number(input.sampleSize || 200), 20), 1000);
+      let documents;
+      try { documents = await collection.aggregate([{ $match: filter }, { $sample: { size: sampleSize } }], { maxTimeMS: timeout }).toArray(); }
+      catch { documents = await collection.find(filter, { maxTimeMS: timeout }).limit(sampleSize).toArray(); }
+      const stats = await database.command({ collStats: collectionName, scale: 1024 * 1024 }, { maxTimeMS: timeout }).catch(() => ({}));
+      return { ok: true, action, collection: collectionName, sampleSize: documents.length, collectionMetrics: { count: stats.count, sizeMB: stats.size, storageMB: stats.storageSize, averageDocumentBytes: stats.avgObjSize }, fields: analyzeMongoStudioSchema(documents), durationMs: Date.now() - started };
+    }
+    if (action === "indexes") {
+      const indexes = await collection.listIndexes({ maxTimeMS: timeout }).toArray();
+      return { ok: true, action, collection: collectionName, indexes: indexes.map((item) => ({ name: item.name, key: item.key, unique: Boolean(item.unique), sparse: Boolean(item.sparse), hidden: Boolean(item.hidden), partialFilterExpression: item.partialFilterExpression, expireAfterSeconds: item.expireAfterSeconds, collation: item.collation })), durationMs: Date.now() - started };
+    }
+    if (action === "validation") {
+      const info = (await database.listCollections({ name: collectionName }, { nameOnly: false }).toArray())[0];
+      return { ok: true, action, collection: collectionName, validation: { validator: info?.options?.validator || {}, validationLevel: info?.options?.validationLevel || "strict (default)", validationAction: info?.options?.validationAction || "error (default)", collation: info?.options?.collation || null, type: info?.type || "collection" }, durationMs: Date.now() - started };
+    }
+    if (action === "explain") {
+      const explain = await collection.find(filter, { projection, maxTimeMS: timeout }).sort(sort).limit(limit).explain("executionStats");
+      const stats = explain.executionStats || {};
+      return { ok: true, action, collection: collectionName, summary: { executionTimeMillis: stats.executionTimeMillis, documentsReturned: stats.nReturned, documentsExamined: stats.totalDocsExamined, keysExamined: stats.totalKeysExamined, examinedToReturned: stats.nReturned ? Math.round((stats.totalDocsExamined || 0) / stats.nReturned * 100) / 100 : null, winningStage: explain.queryPlanner?.winningPlan?.stage || explain.queryPlanner?.winningPlan?.queryPlan?.stage || "unknown" }, explain, durationMs: Date.now() - started };
+    }
+    const [status, current, dbStats, collectionStats, repl] = await Promise.all([
+      database.admin().command({ serverStatus: 1 }, { maxTimeMS: timeout }),
+      database.admin().command({ currentOp: 1, active: true }, { maxTimeMS: timeout }),
+      database.command({ dbStats: 1, scale: 1024 * 1024 }, { maxTimeMS: timeout }),
+      collectionName ? database.command({ collStats: collectionName, scale: 1024 * 1024 }, { maxTimeMS: timeout }).catch(() => null) : Promise.resolve(null),
+      database.admin().command({ replSetGetStatus: 1 }, { maxTimeMS: timeout }).catch(() => null),
+    ]);
+    const active = Array.isArray(current.inprog) ? current.inprog.slice(0, 80) : [];
+    return { ok: true, action, database: connection.database || "admin", metrics: { uptimeSeconds: status.uptime, connectionsCurrent: status.connections?.current, connectionsAvailable: status.connections?.available, queuedReaders: status.globalLock?.currentQueue?.readers, queuedWriters: status.globalLock?.currentQueue?.writers, cacheUsedBytes: status.wiredTiger?.cache?.["bytes currently in the cache"], cacheMaxBytes: status.wiredTiger?.cache?.["maximum bytes configured"], operations: Object.values(status.opcounters || {}).reduce((total, value) => total + (Number(value) || 0), 0), objects: dbStats.objects, dataMB: dbStats.dataSize, storageMB: dbStats.storageSize }, collectionMetrics: collectionStats, currentOperations: active.map((item) => ({ opid: item.opid, operation: item.op, namespace: item.ns, seconds: item.secs_running, waitingForLock: item.waitingForLock, plan: item.planSummary, client: item.client, description: item.desc })), replication: repl ? { set: repl.set, myState: repl.myState, term: repl.term, members: repl.members?.map((item) => ({ name: item.name, state: item.stateStr, health: item.health, optimeDate: item.optimeDate, pingMs: item.pingMs })) } : null, durationMs: Date.now() - started };
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+function mongosyncPort(input) {
+  const port = Number(input.port || 27182);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Enter a valid local mongosync API port");
+  return port;
+}
+
+async function callLocalMongosync(port, action, requestBody) {
+  const method = action === "progress" ? "GET" : "POST";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/${action}`, { method, headers: { "Content-Type": "application/json" }, ...(method === "POST" ? { body: JSON.stringify(requestBody || {}) } : {}), signal: controller.signal });
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { success: false, errorDescription: text || `HTTP ${response.status}` }; }
+    if (!response.ok || data.success === false) throw new Error(data.errorDescription || data.error || `mongosync ${action} failed (${response.status})`);
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("The local mongosync API did not respond within 12 seconds");
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
+async function runMongosyncController(input) {
+  const action = String(input.action || "progress");
+  const allowed = new Set(["progress", "start", "pause", "resume", "commit", "reverse"]);
+  if (!allowed.has(action)) throw new Error("Unsupported mongosync lifecycle action");
+  const port = mongosyncPort(input);
+  if (action === "progress") {
+    const response = await callLocalMongosync(port, "progress");
+    return { ok: true, action, endpoint: `127.0.0.1:${port}`, ...response, collectedAt: new Date().toISOString() };
+  }
+  const expectedConfirmation = `APPLY MONGOSYNC ${action.toUpperCase()}`;
+  if (String(input.confirmation || "") !== expectedConfirmation) throw new Error(`Type ${expectedConfirmation} to confirm this lifecycle action`);
+  const before = await callLocalMongosync(port, "progress");
+  const progress = before.progress || {};
+  const permittedStates = { start: ["IDLE"], pause: ["RUNNING"], resume: ["PAUSED"], commit: ["RUNNING"], reverse: ["COMMITTED"] };
+  if (!permittedStates[action].includes(progress.state)) throw new Error(`mongosync ${action} is not permitted while state is ${progress.state || "unknown"}`);
+  if (action === "commit" && progress.canCommit !== true) throw new Error("mongosync reports canCommit=false; verify lag and embedded verifier status before cutover");
+  let requestBody = {};
+  if (action === "start") {
+    const source = String(input.source || "cluster0"); const destination = String(input.destination || "cluster1");
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(source) || !/^[A-Za-z0-9_-]{1,64}$/.test(destination) || source === destination) throw new Error("Enter distinct mongosync cluster aliases");
+    requestBody = { source, destination, reversible: input.reversible === true };
+    const buildIndexes = String(input.buildIndexes || "");
+    if (buildIndexes && !["beforeDataCopy", "afterDataCopy", "excludeHashedAfterCopy", "never"].includes(buildIndexes)) throw new Error("Select a supported mongosync index-build mode");
+    if (buildIndexes) requestBody.buildIndexes = buildIndexes;
+  }
+  const response = await callLocalMongosync(port, action, requestBody);
+  return { ok: true, action, endpoint: `127.0.0.1:${port}`, before: progress, response, requestedAt: new Date().toISOString(), note: action === "commit" ? "Cutover requested. Poll progress until state is COMMITTED before redirecting application traffic." : "Lifecycle request accepted. Refresh progress to observe the state transition." };
+}
 async function routeApi(req, res, url, port) {
+  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.28.0", port } });
   if (!isTrusted(req, port)) return json(res, 403, { ok: false, error: "Request rejected by local security policy" });
-  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.22.0", host: HOST, port });
+  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.28.0", host: HOST, port });
   if (req.method === "GET" && url.pathname === "/api/tools/status") return json(res, 200, { ok: true, tools: await toolStatus() });
   if (req.method === "GET" && url.pathname === "/api/adapters") {
     const availability = Object.fromEntries(await Promise.all(Object.entries(sqlAdapterCatalog).map(async ([id, adapter]) => {
@@ -1979,6 +2322,14 @@ async function routeApi(req, res, url, port) {
     if (result.code !== 0) return json(res, 422, { ok: false, error: result.stderr || result.stdout || "Database catalog collection failed", engine, durationMs, ...result });
     const objects = parseDatabaseCatalog(engine, result.stdout);
     return json(res, 200, { ok: true, engine, objects, count: objects.length, durationMs, collectedAt: new Date().toISOString(), truncated: result.truncated || objects.length >= 1500 });
+  }
+  if (req.method === "POST" && url.pathname === "/api/mongodb/studio") {
+    const input = await body(req);
+    return json(res, 200, await runMongoStudioAction(input));
+  }
+  if (req.method === "POST" && url.pathname === "/api/mongodb/mongosync") {
+    const input = await body(req);
+    return json(res, 200, await runMongosyncController(input));
   }
   if (req.method === "GET" && url.pathname === "/api/investigation") {
     const store = await readInvestigationStore();
@@ -2298,7 +2649,29 @@ async function routeApi(req, res, url, port) {
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n"); const analysis = analyzeOracleSqlIdCheck(check, output);
     return json(res, 200, { ok: true, engine: "oracle", identifier, check, packScope, requiredScope, label: definition.label, phase: definition.phase, source: definition.source, guidance: definition.guidance, durationMs, analysis, collectedAt: new Date().toISOString(), ...result });
   }
-  if (req.method === "GET" && url.pathname === "/api/performance/catalog") {
+  if (req.method === "GET" && url.pathname === "/api/performance/diagnostic-studio/catalog") {
+    const catalog = diagnosticStudioCatalog();
+    return json(res, 200, { ok: true, ...catalog });
+  }
+  if (req.method === "POST" && url.pathname === "/api/performance/diagnostic-studio/analyze") {
+    const input = await body(req);
+    const engine = String(input.engine || "").toLowerCase();
+    const identifier = validateDiagnosticStudioIdentifier(engine, input.identifier);
+    const playbookId = String(input.playbook || "slow-sql");
+    const packScope = String(input.packScope || "core").toLowerCase();
+    if (engine === "oracle" && !["core", "diagnostics", "tuning"].includes(packScope)) throw new Error("Select an approved Oracle license scope");
+    const collected = await collectDiagnosticStudioEvidence(input, engine, playbookId, identifier, packScope);
+    const report = buildDiagnosticIncidentReport({
+      engine,
+      playbookId,
+      identifier,
+      packScope,
+      results: collected.results,
+      analysis: collected.analysis,
+      collectedAt: new Date().toISOString(),
+    });
+    return json(res, 200, { ...report, serverVersion: collected.serverVersion || undefined });
+  }  if (req.method === "GET" && url.pathname === "/api/performance/catalog") {
     const catalog = Object.fromEntries(Object.entries(tuningChecks).map(([engine, checks]) => [engine, Object.fromEntries(Object.entries(checks).map(([id, check]) => [id, { label: check.label, guidance: check.guidance }]))]));
     return json(res, 200, { ok: true, engines: Object.keys(catalog).length, totalChecks: Object.values(catalog).reduce((sum, checks) => sum + Object.keys(checks).length, 0), catalog });
   }
@@ -2448,7 +2821,90 @@ async function routeApi(req, res, url, port) {
       analysis,
     });
   }
-  if (req.method === "POST" && url.pathname === "/api/performance/check") {
+  if (req.method === "GET" && url.pathname === "/api/performance/relational-bottleneck/catalog") {
+    const engine = String(url.searchParams.get("engine") || "").toLowerCase();
+    const definitions = relationalBottleneckCatalogs[engine];
+    if (!definitions) throw new Error("Advanced relational packs support MySQL, MariaDB, and SQL Server");
+    return json(res, 200, {
+      ok: true,
+      engine,
+      totalChecks: definitions.length,
+      catalog: definitions.map(({ sql: _sql, ...definition }) => definition),
+      safety: "Fixed read-only database evidence only. No server, session, plan, Query Store, replication, index, statistics, configuration, or instrumentation state is changed.",
+    });
+  }
+  if (req.method === "POST" && url.pathname === "/api/performance/relational-bottleneck/analyze") {
+    const input = await body(req);
+    const engine = String(input.engine || "").toLowerCase();
+    const definitions = relationalBottleneckCatalogs[engine];
+    if (!definitions) throw new Error("Advanced relational packs support MySQL, MariaDB, and SQL Server");
+    const identifier = String(input.identifier || "").trim();
+    if (identifier && ["mysql", "mariadb"].includes(engine) && !/^[a-f0-9]{64}$/i.test(identifier)) {
+      throw new Error(`${engine === "mariadb" ? "MariaDB" : "MySQL"} statement digest must contain exactly 64 hexadecimal characters`);
+    }
+    if (identifier && engine === "sqlserver" && !/^0x[a-f0-9]{16}$/i.test(identifier)) {
+      throw new Error("SQL Server query hash must use the 0x prefix followed by exactly 16 hexadecimal characters");
+    }
+    const timeoutMs = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
+    const results = [];
+    for (const definition of definitions) {
+      const common = {
+        id: definition.id,
+        label: definition.label,
+        phase: definition.phase,
+        guidance: definition.guidance,
+      };
+      if (definition.requiresIdentifier && !identifier) {
+        results.push({
+          ...common,
+          ok: false,
+          skipped: true,
+          durationMs: 0,
+          rows: [],
+          error: "Optional statement identifier not supplied; database-wide checks continued",
+        });
+        continue;
+      }
+      const started = Date.now();
+      try {
+        const sql = definition.requiresIdentifier ? definition.sql.replaceAll("__IDENTIFIER__", identifier) : definition.sql;
+        const result = await executeDatabaseQuery({ ...input, engine }, sql, timeoutMs);
+        const rows = Array.isArray(result.rows) ? result.rows.slice(0, 250) : [];
+        const ok = result.code === 0;
+        results.push({
+          ...common,
+          ok,
+          skipped: false,
+          durationMs: Date.now() - started,
+          rowCount: Number(result.rowCount ?? rows.length),
+          rows,
+          error: ok ? undefined : String(result.stderr || result.stdout || `${definition.label} evidence query failed`).slice(0, 2000),
+        });
+      } catch (error) {
+        results.push({
+          ...common,
+          ok: false,
+          skipped: false,
+          durationMs: Date.now() - started,
+          rows: [],
+          error: String(error instanceof Error ? error.message : error).slice(0, 2000),
+        });
+      }
+    }
+    const analysis = analyzeRelationalBottlenecks(engine, results, identifier);
+    const environment = results.find((item) => item.id === "environment" && item.ok)?.rows?.[0] || {};
+    return json(res, 200, {
+      ok: true,
+      engine,
+      identifier,
+      serverVersion: environment.version || environment.product_version || "",
+      edition: environment.edition || environment.version_comment || "",
+      collectedAt: new Date().toISOString(),
+      safety: analysis.safetyNote,
+      results,
+      analysis,
+    });
+  }  if (req.method === "POST" && url.pathname === "/api/performance/check") {
     const input = await body(req);
     const engine = String(input.engine || "").toLowerCase();
     const check = String(input.check || "");
@@ -2457,6 +2913,14 @@ async function routeApi(req, res, url, port) {
     const started = Date.now();
     const result = await executeDatabaseQuery(input, definition.sql, input.timeoutMs || 45000);
     return json(res, result.code === 0 ? 200 : 422, { ok: result.code === 0, engine, check, label: definition.label, guidance: definition.guidance, durationMs: Date.now() - started, ...result });
+  }
+  if (req.method === "GET" && url.pathname === "/api/logs/migration-compare/catalog") {
+    return json(res, 200, { ok: true, engines: migrationLogEngines, maxLogBytes: 3500000, safety: "Pasted logs are parsed in memory by the loopback agent and are not stored, uploaded, or used to run database commands." });
+  }
+  if (req.method === "POST" && url.pathname === "/api/logs/migration-compare") {
+    const input = await body(req);
+    const analysis = compareMigrationLogs(input);
+    return json(res, 200, { ...analysis, clean: analysis.ok, ok: true });
   }
   if (req.method === "POST" && url.pathname === "/api/logs/tail") {
     const input = await body(req);
@@ -2623,6 +3087,11 @@ async function routeApi(req, res, url, port) {
     const target = await preflightSshTarget(input);
     return json(res, 200, { ok: true, target });
   }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/trust/forget") {
+    const input = await body(req);
+    const result = await forgetSshHostTrust(input);
+    return json(res, 200, { ok: true, ...result });
+  }
   if (req.method === "GET" && url.pathname === "/api/terminal/ssh/limits") {
     return json(res, 200, { ok: true, limits: SSH_TERMINAL_LIMITS, sessions: listSshSessions() });
   }
@@ -2643,6 +3112,26 @@ async function routeApi(req, res, url, port) {
     const input = await body(req);
     return json(res, 200, { ok: true, ...resizeSshSession(input.sessionId, input.cols, input.rows) });
   }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/forward/open") {
+    const input = await body(req);
+    const forward = await openSshLocalForward(input.sessionId, input);
+    return json(res, 200, { ok: true, forward, forwards: listSshForwards(input.sessionId) });
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/forward/close") {
+    const input = await body(req);
+    await closeSshForward(input.sessionId, input.forwardId);
+    return json(res, 200, { ok: true, forwards: listSshForwards(input.sessionId) });
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/sftp/list") {
+    const input = await body(req);
+    const listing = await listSftpDirectory(input.sessionId, input.path);
+    return json(res, 200, { ok: true, ...listing });
+  }
+  if (req.method === "POST" && url.pathname === "/api/terminal/ssh/sftp/read") {
+    const input = await body(req);
+    const file = await readSftpFile(input.sessionId, input.path);
+    return json(res, 200, { ok: true, file });
+  }
   if (req.method === "POST" && url.pathname === "/api/terminal/ssh/close") {
     const input = await body(req);
     return json(res, 200, { ok: true, ...closeSshSession(input.sessionId) });
@@ -2654,7 +3143,9 @@ function createAppServer(port) {
   return createServer(async (req, res) => {
     try {
       if (!hasLocalHostHeader(req, port)) return json(res, 403, { ok: false, error: "Local host header required" });
+      applyOperationsStudioCors(req, res);
       const url = new URL(req.url || "/", `http://${HOST}:${port}`);
+      if (req.method === "OPTIONS" && url.pathname.startsWith("/api/") && isOperationsStudioOrigin(req)) { res.writeHead(204, { "Access-Control-Allow-Origin": req.headers.origin, "Access-Control-Allow-Headers": "Content-Type, X-DBridge-Token", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Max-Age": "600", "Cross-Origin-Resource-Policy": "cross-origin", Vary: "Origin" }); res.end(); return; }
       if (url.pathname.startsWith("/api/")) return await routeApi(req, res, url, port);
       let path = url.pathname === "/" ? join(APP_ROOT, "index.html") : resolve(APP_ROOT, `.${url.pathname}`);
       if (!path.startsWith(resolve(APP_ROOT))) return json(res, 403, { error: "Forbidden" });

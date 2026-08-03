@@ -293,7 +293,7 @@
           <p>Keep environment, service and evidence window visible while moving through Kubernetes, Docker, pipelines, Kafka, GoldenGate, drift and approved CLI inspection.</p>
         </div>
         <div class="devops-v4-context">
-          <label>ENVIRONMENT<select id="devopsV4Environment"><option>Production</option><option>Staging</option><option>Development</option><option>Disaster recovery</option></select></label>
+          <label>ENVIRONMENT<select id="devopsV4Environment"><option>Production</option><option>SIT</option><option>UAT-Test</option><option>DEV</option></select></label>
           <label>EVIDENCE WINDOW<select id="devopsV4Window"><option value="15m">Last 15 minutes</option><option value="30m">Last 30 minutes</option><option value="1h">Last hour</option><option value="24h">Last 24 hours</option></select></label>
           <label>APPLICATION / SERVICE<input id="devopsV4Service" maxlength="100" placeholder="payments-api, finance-etl, orders"></label>
         </div>
@@ -384,7 +384,7 @@
     matrix.className = "terminal-remote-matrix";
     matrix.innerHTML = `
       <article><span>TARGETS</span><b>Hostname · IPv4 · IPv6</b><small>Bracketed IPv6 is accepted. Port range is validated before connection.</small></article>
-      <article><span>TRUST</span><b>known_hosts required</b><small>A server key must already be trusted; DBridge never silently accepts a new key.</small></article>
+      <article><span>TRUST</span><b>First-use approval</b><small>DBridge inspects, confirms, and pins new server fingerprints before authentication.</small></article>
       <article><span>IDENTITY</span><b>Agent · key · password</b><small>Secrets are used only for the handshake and are not stored in profiles.</small></article>
       <article><span>BOUNDARY</span><b>4 sessions · 15 min idle</b><small>Each server tab is capped, locally streamed and closed with the application.</small></article>`;
     panel.after(matrix);

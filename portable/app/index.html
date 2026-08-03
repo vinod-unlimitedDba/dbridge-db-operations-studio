@@ -39,6 +39,7 @@
   <link rel="stylesheet" href="/vendor/xterm.css">
   <link rel="stylesheet" href="/ssh-terminal.css">
   <link rel="stylesheet" href="/stack-shell-v4.css">
+  <link rel="stylesheet" href="/db-studio-unified.css">
   <script src="/theme-boot.js"></script>
 </head>
 <body>
@@ -117,6 +118,39 @@
 
       <section class="view" id="sql-view">
         <div class="page-intro compact"><div><p>SQL STUDIO</p><h1>Connect, explore and run commands</h1><span>A DBGate-style local workspace that adapts connection fields, object browsing and command execution to the selected database.</span></div><div class="mode-pill"><i></i>Read-only protection active</div></div>
+        <section class="db-studio-hub panel" aria-label="Unified database connector workspace">
+          <header class="db-studio-hub-head">
+            <div><span>DB CONNECTOR + STUDIO</span><h2>One connection context for every database tool</h2><p>Autofill a target, validate access, browse live objects, run SQL, and export results without re-entering connection details.</p></div>
+            <div class="db-studio-hub-count"><strong id="dbStudioReadyCount">15</strong><span>CONNECTORS</span><small id="dbStudioReadyLabel">Checking local readiness…</small></div>
+          </header>
+          <div class="db-studio-hub-grid">
+            <article class="db-studio-connector-card">
+              <span>ACTIVE CONNECTOR</span>
+              <div><strong id="dbStudioAdapterName">Oracle</strong><em id="dbStudioAccessState">CHECKING</em></div>
+              <p id="dbStudioAdapterMeta">Bundled driver, catalog browsing, SQL execution and diagnostics.</p>
+              <div class="db-studio-capability-badges" id="dbStudioCapabilityBadges"><i>SQL</i><i>CATALOG</i><i>TLS</i><i>READ ONLY</i></div>
+            </article>
+            <article class="db-studio-autofill-card">
+              <label>AUTOFILL CONNECTION
+                <select id="dbStudioAutofillSource">
+                  <option value="last">Last saved environment session</option>
+                  <option value="profile">Selected saved connection profile</option>
+                  <option value="defaults">Adapter defaults</option>
+                </select>
+              </label>
+              <p id="dbStudioAutofillHint">Restores non-secret fields for the current environment. Passwords are never filled or saved.</p>
+              <div><button type="button" class="primary" id="dbStudioAutofill">Autofill</button><button type="button" class="secondary" id="dbStudioClearSecrets">Clear secrets</button></div>
+            </article>
+            <article class="db-studio-action-card">
+              <span>CONNECTION ACTIONS</span>
+              <div>
+                <button type="button" id="dbStudioValidate"><b>01</b><span>Validate connection<small>Identity + permission check</small></span></button>
+                <button type="button" id="dbStudioRefreshCatalog"><b>02</b><span>Refresh objects<small>Schemas, tables and views</small></span></button>
+              </div>
+              <p>SQL autofill uses adapter keywords, snippets, diagnostics, and live catalog objects after connection.</p>
+            </article>
+          </div>
+        </section>
         <section class="friendly-start-path" aria-label="SQL Studio getting started">
           <div><span>START HERE</span><b>Three simple steps</b><small>Your password stays in memory and is never saved.</small></div>
           <button type="button" data-workspace-target="sqlEngine"><i>1</i><span><b>Choose &amp; connect</b><small>Select the database and enter its approved connection.</small></span></button>
@@ -127,6 +161,7 @@
         <div class="workbench">
           <aside class="connection-panel panel">
             <div class="panel-title"><div><span class="friendly-step-label">STEP 1</span><h2>Connect to a database</h2><p>Current execution target</p></div><span class="sql-live-badge disconnected" id="sqlLiveConnectionBadge"><i></i>DISCONNECTED</span></div>
+            <label>ENVIRONMENT<select id="sqlEnvironment"><option>Production</option><option>SIT</option><option>UAT-Test</option><option>DEV</option></select></label>
             <label>ENGINE<select id="sqlEngine"><option value="oracle">Oracle</option><option value="postgres">PostgreSQL</option><option value="mongodb">MongoDB</option><option value="mysql">MySQL</option><option value="sqlserver">SQL Server</option><option value="mariadb">MariaDB</option><option value="redshift">Amazon Redshift</option><option value="synapse">Azure Synapse</option><option value="snowflake">Snowflake</option><option value="bigquery">Google BigQuery</option><option value="databricks">Databricks SQL</option><option value="db2">IBM Db2</option><option value="hana">SAP HANA</option><option value="clickhouse">ClickHouse</option><option value="teradata">Teradata</option></select></label>
             <label>AUTHENTICATION<select id="sqlAuthMode"><option value="password">Database username and password</option><option value="context">Existing CLI / integrated context</option></select></label>
             <label>NETWORK SECURITY<select id="sqlTlsMode"><option value="prefer">Driver default / prefer TLS</option><option value="require">Require trusted TLS</option><option value="disable">Disable TLS (approved internal only)</option></select></label>
@@ -165,7 +200,7 @@ from v$sql
 where rownum &lt;= 20
  order by elapsed_time desc</textarea><div class="editor-autocomplete hidden" id="editorAutocomplete" role="listbox" aria-label="Real-time code suggestions"><header><div><span>AUTO</span><b>Real-time completion</b></div><small id="autocompleteHint">Type to see suggestions</small></header><div class="editor-autocomplete-list" id="editorAutocompleteList"></div><footer><span>↑↓ choose</span><span>Tab / Enter insert</span><span>Esc close</span><em>Suggestions never execute automatically</em></footer></div></div>
             <div class="editor-status"><span id="cursorStatus">Ln 1, Col 1</span><span id="selectionStatus">0 selected</span><span id="characterStatus">0 chars</span><span id="editorEngineStatus">Oracle</span><button type="button" id="toggleAutocomplete" class="active" title="Cycle completion scope: all tools, SQL only, DevOps only, off">AUTO · ALL</button><span id="autocompleteStatus">Ready</span><span>UTF-8</span><span>CRLF</span><span id="editorSaveStatus">Session loading...</span></div>
-            <div class="result-head"><div><button class="active" id="resultGridTab">Results</button><button id="resultMessagesTab">Messages</button></div><span id="sqlTiming">Ready</span></div>
+            <div class="result-head"><div><button class="active" id="resultGridTab">Results</button><button id="resultMessagesTab">Messages</button></div><div class="sql-result-actions"><button type="button" id="exportSqlCsv" disabled>CSV</button><button type="button" id="exportSqlJson" disabled>JSON</button><button type="button" id="copySqlResult" disabled>Copy</button><span id="sqlTiming">Ready</span></div></div>
             <div class="results" id="sqlResults"><div class="empty-state"><span>›_</span><h3>Ready to execute</h3><p>Results and client messages will appear here.</p></div></div>
             <div class="results hidden" id="sqlMessages"><pre class="output-pre">Connection and execution messages will appear here.</pre></div>
           </section>
@@ -756,7 +791,7 @@ DBridge reads only appended bytes and does not lock or modify the source file.</
 
         <section class="ssh-terminal-panel panel" id="sshTerminalPanel" aria-label="Interactive SSH terminal">
           <header class="ssh-terminal-head">
-            <div><span>INTERACTIVE SESSION</span><h2>SSH terminal</h2><p>A real remote shell on a host already trusted in <code>known_hosts</code>. Unlike the profiles above, what you type is sent to the server and executed.</p></div>
+            <div><span>INTERACTIVE SESSION</span><h2>SSH terminal</h2><p>A real remote shell with in-app first-use fingerprint approval. What you type is sent to the server and executed.</p></div>
             <span class="ssh-terminal-state" id="sshTerminalState"><i></i>DISCONNECTED</span>
           </header>
           <div class="ssh-terminal-warning" id="sshTerminalWarning">
@@ -764,6 +799,7 @@ DBridge reads only appended bytes and does not lock or modify the source file.</
             <p><b>This workspace executes what you type</b><small>The read-only allowlist does not apply inside a live shell. Your own SSH account permissions on the remote server are the only limit. Sessions close when DBridge exits or after 15 minutes idle.</small></p>
           </div>
           <div class="ssh-terminal-controls">
+            <label><span>ENVIRONMENT</span><select id="sshTerminalEnvironment"><option>Production</option><option>SIT</option><option>UAT-Test</option><option>DEV</option></select></label>
             <label><span>HOST</span><input id="sshTerminalHost" autocomplete="off" placeholder="db-prod-01" maxlength="255"></label>
             <label class="port"><span>PORT</span><input id="sshTerminalPort" value="22" autocomplete="off" maxlength="5"></label>
             <label><span>USERNAME</span><input id="sshTerminalUsername" autocomplete="username" placeholder="dba" maxlength="64"></label>
@@ -781,7 +817,7 @@ DBridge reads only appended bytes and does not lock or modify the source file.</
             </div>
           </div>
           <div class="ssh-terminal-surface" id="sshTerminalSurface">
-            <div class="ssh-terminal-empty" id="sshTerminalEmpty"><span>SSH</span><b>No active shell</b><p>Enter a host that is already present in your <code>known_hosts</code> file and select Connect. DBridge never accepts a new host key for you.</p></div>
+            <div class="ssh-terminal-empty" id="sshTerminalEmpty"><span>SSH</span><b>No active shell</b><p>Enter a hostname or IP and select Connect. DBridge inspects the key before authentication, asks once, and pins the fingerprint locally.</p></div>
             <div class="ssh-terminal-mount hidden" id="sshTerminalMount"></div>
           </div>
           <footer class="ssh-terminal-foot">

@@ -8,7 +8,7 @@ import { oracleBottleneckCatalog, analyzeOracleBottlenecks } from "./oracle-bott
 import { postgresBottleneckCatalog, analyzePostgresBottlenecks } from "./postgres-bottleneck.mjs";
 import { mongodbBottleneckCatalog, analyzeMongoBottlenecks } from "./mongodb-bottleneck.mjs";
 import { runtimeTraceCatalog, validateRuntimeTraceInput, runtimeTraceSql, analyzeRuntimeTrace } from "./runtime-trace.mjs";
-import { validateSshTarget, normalizeSshHost } from "./ssh-terminal.mjs";
+import { SSH_TERMINAL_LIMITS, validateSshTarget, normalizeSshHost, validateSftpPath, validateLocalForwardTarget } from "./ssh-terminal.mjs";
 
 const scriptData = await mkdtemp(join(tmpdir(), "dbridge-script-smoke-"));
 const child = spawn(process.execPath, [fileURLToPath(new URL("server.mjs", import.meta.url))], { env: { ...process.env, DBRIDGE_NO_BROWSER: "1", DBRIDGE_PORT: "17872", DBRIDGE_DATA_DIR: scriptData }, windowsHide: true });
@@ -33,12 +33,18 @@ try {
   let unsafeSshTarget = false;
   try { normalizeSshHost("db-prod;whoami"); } catch { unsafeSshTarget = true; }
   if (!unsafeSshTarget) throw new Error("SSH target validation accepted command metacharacters");
-  if (Object.keys(runtimeTraceCatalog).length !== 5 || Object.values(runtimeTraceCatalog).reduce((total, definition) => total + definition.checks.length, 0) !== 26 || runtimeTraceCatalog.oracle.checks.length !== 6) throw new Error("Unified runtime trace catalog was incomplete");
+  const sshForward = validateLocalForwardTarget({ remoteHost: "postgres.internal", remotePort: 5432, localPort: 0 });
+  if (SSH_TERMINAL_LIMITS.maxSessions !== 8 || SSH_TERMINAL_LIMITS.maxForwardsPerSession !== 4 || sshForward.remoteHost !== "postgres.internal" || sshForward.remotePort !== 5432 || validateSftpPath("/var/log") !== "/var/log") throw new Error("Advanced SSH limits, SFTP, or local-forward validation failed");
+  let privilegedForwardGuarded = false;
+  try { validateLocalForwardTarget({ remoteHost: "127.0.0.1", remotePort: 5432, localPort: 80 }); } catch { privilegedForwardGuarded = true; }
+  if (!privilegedForwardGuarded) throw new Error("SSH local forwarding accepted a privileged bind port");
+  if (Object.keys(runtimeTraceCatalog).length !== 6 || Object.values(runtimeTraceCatalog).reduce((total, definition) => total + definition.checks.length, 0) !== 31 || runtimeTraceCatalog.oracle.checks.length !== 6) throw new Error("Unified runtime trace catalog was incomplete");
   const validRuntimeIds = {
     oracle: "8m5j1t2y4n6p9",
     postgres: "-1234567890123456789",
     mongodb: "orders-api.checkout",
     mysql: "A1B2C3D4E5F60718",
+    mariadb: "A1B2C3D4E5F60718",
     sqlserver: "0x0123456789ABCDEF",
   };
   for (const [engine, identifier] of Object.entries(validRuntimeIds)) if (!validateRuntimeTraceInput(engine, identifier).identifier) throw new Error(`Runtime trace validation failed for ${engine}`);
@@ -255,7 +261,7 @@ try {
   if (recommendationStart < 0 || recommendationEnd <= recommendationStart) throw new Error("SQL recommendation engine was not found");
   const recommendationFactory = new Function(`${serverSource.slice(recommendationStart, recommendationEnd)}; return { recommendationCatalog, recommendationSql, parseRecommendationMetrics, buildSqlRecommendations, performanceSampleSql, parsePerformanceSample, planHistorySql, goldenGateAdminClientSpec, goldenGateClassicSpec, parseGoldenGateDiagnostics, kubernetesDashboardSpecs, dockerDashboardSpecs, containerWriteActionSpec, containerPreflightSpec };`);
   const { recommendationCatalog, recommendationSql, parseRecommendationMetrics, buildSqlRecommendations, performanceSampleSql, parsePerformanceSample, planHistorySql, goldenGateAdminClientSpec, goldenGateClassicSpec, parseGoldenGateDiagnostics, kubernetesDashboardSpecs, dockerDashboardSpecs, containerWriteActionSpec, containerPreflightSpec } = recommendationFactory();
-  if (Object.keys(recommendationCatalog).length !== 5 || Object.values(recommendationCatalog).some((item) => !item.identifier || !item.source || !item.planAction)) throw new Error("SQL recommendation catalog was incomplete");
+  if (Object.keys(recommendationCatalog).length !== 6 || Object.values(recommendationCatalog).some((item) => !item.identifier || !item.source || !item.planAction)) throw new Error("SQL recommendation catalog was incomplete");
   for (const engine of Object.keys(recommendationCatalog)) if (!recommendationSql(engine, engine === "postgres" ? "-123456" : "8m5j1t2y4n6p9")) throw new Error(`Recommendation SQL was missing for ${engine}`);
   const parsedMetrics = parseRecommendationMetrics("oracle", '"matched=1"\n"executions=20"\n"elapsed_ms=220000"\n"logical_reads=25000000"');
   if (parsedMetrics.executions !== 20 || parsedMetrics.elapsed_ms !== 220000) throw new Error("SQL recommendation metric parser failed");
@@ -294,7 +300,15 @@ try {
   const token = html.match(/name="dbridge-token" content="([a-f0-9]+)"/)?.[1];
   if (!token) throw new Error("Session token was not injected");
   const health = await request("/api/health", token);
-  if (health.product !== "DBridge Portable" || health.version !== "2.22.0") throw new Error("Health response was invalid");
+  if (health.product !== "DBridge Portable" || health.version !== "2.28.0") throw new Error("Health response was invalid");
+  const diagnosticStudio = await request("/api/performance/diagnostic-studio/catalog", token);
+  if (diagnosticStudio.playbooks?.length !== 8 || Object.keys(diagnosticStudio.engines || {}).length !== 6 || !/does not kill sessions/i.test(diagnosticStudio.safety || "")) throw new Error("SQL Diagnostic Incident Command catalog was incomplete");
+  const migrationLogCatalog = await request("/api/logs/migration-compare/catalog", token);
+  if (Object.keys(migrationLogCatalog.engines || {}).length !== 7 || migrationLogCatalog.maxLogBytes !== 3500000 || !/not stored/i.test(migrationLogCatalog.safety)) throw new Error("Migration log comparison catalog was incomplete");
+  const dataPumpExportFixture = ['. . exported "HR"."EMPLOYEES" 17 KB 107 rows', 'Job "SYSTEM"."SYS_EXPORT_SCHEMA_01" successfully completed'].join(String.fromCharCode(10));
+  const dataPumpImportFixture = ['. . imported "HR"."EMPLOYEES" 17 KB 100 rows', 'Job "SYSTEM"."SYS_IMPORT_SCHEMA_01" successfully completed'].join(String.fromCharCode(10));
+  const migrationLogComparison = await request("/api/logs/migration-compare", token, { engine: "oracle", exportLog: dataPumpExportFixture, importLog: dataPumpImportFixture, ignoreTimestamps: true });
+  if (migrationLogComparison.engine !== "oracle" || migrationLogComparison.summary.rowMismatches !== 1 || !migrationLogComparison.redline.length || !migrationLogComparison.verificationScript.includes("COUNT(*)")) throw new Error("Migration log comparison API did not reconcile Data Pump rows");
   const dbgateStyle = await fetch("http://127.0.0.1:17872/sql-studio-dbgate.css");
   if (!dbgateStyle.ok || !(await dbgateStyle.text()).includes(".database-explorer")) throw new Error("DBGate-style SQL Studio stylesheet was unavailable");
   const oraclePerformanceStyle = await fetch("http://127.0.0.1:17872/oracle-performance-v1.css");
@@ -343,9 +357,9 @@ try {
   const adapterCatalog = await request("/api/adapters", token);
   if (adapterCatalog.total !== 15 || Object.keys(adapterCatalog.adapters).length !== 15 || !adapterCatalog.adapters.snowflake || !adapterCatalog.adapters.teradata || adapterCatalog.adapters.mongodb.preferredAccess !== "direct" || !adapterCatalog.adapters.mongodb.directAvailable || adapterCatalog.adapters.mongodb.client) throw new Error("Database and warehouse adapter catalog was incomplete");
   const performanceCatalog = await request("/api/performance/catalog", token);
-  if (performanceCatalog.engines !== 5 || performanceCatalog.totalChecks !== 50 || Object.values(performanceCatalog.catalog).some((checks) => Object.keys(checks).length !== 10)) throw new Error("Advanced database tuning catalog was incomplete");
+  if (performanceCatalog.engines !== 6 || performanceCatalog.totalChecks !== 60 || Object.values(performanceCatalog.catalog).some((checks) => Object.keys(checks).length !== 10)) throw new Error("Advanced database tuning catalog was incomplete");
   const runtimeTraceApiCatalog = await request("/api/performance/runtime-trace/catalog", token);
-  if (runtimeTraceApiCatalog.engines !== 5 || runtimeTraceApiCatalog.totalChecks !== 26 || Object.values(runtimeTraceApiCatalog.catalog).some((definition) => definition.checks.some((check) => Object.hasOwn(check, "sql"))) || !/fixed read-only/i.test(runtimeTraceApiCatalog.safety)) throw new Error("Unified runtime trace API catalog was incomplete or exposed executable SQL");
+  if (runtimeTraceApiCatalog.engines !== 6 || runtimeTraceApiCatalog.totalChecks !== 31 || Object.values(runtimeTraceApiCatalog.catalog).some((definition) => definition.checks.some((check) => Object.hasOwn(check, "sql"))) || !/fixed read-only/i.test(runtimeTraceApiCatalog.safety)) throw new Error("Unified runtime trace API catalog was incomplete or exposed executable SQL");
   const unsafeRuntimeTraceId = await fetch("http://127.0.0.1:17872/api/performance/runtime-trace/capture", { method: "POST", headers: { "Content-Type": "application/json", "X-DBridge-Token": token }, body: JSON.stringify({ engine: "oracle", identifier: "bad';drop" }) });
   if (unsafeRuntimeTraceId.status !== 500) throw new Error("Unified runtime trace endpoint accepted an unsafe identifier");
   const oracleBottleneckApiCatalog = await request("/api/performance/oracle-bottleneck/catalog", token);
@@ -363,7 +377,7 @@ try {
   const unsafeMongoCollection = await fetch("http://127.0.0.1:17872/api/performance/mongodb-bottleneck/analyze", { method: "POST", headers: { "Content-Type": "application/json", "X-DBridge-Token": token }, body: JSON.stringify({ engine: "mongodb", collection: "orders;$where" }) });
   if (unsafeMongoCollection.status !== 500) throw new Error("MongoDB bottleneck analysis accepted an unsafe collection");
   const liveRecommendationCatalog = await request("/api/performance/recommendation-catalog", token);
-  if (liveRecommendationCatalog.engines !== 5 || Object.keys(liveRecommendationCatalog.catalog).length !== 5) throw new Error("SQL recommendation API catalog was incomplete");
+  if (liveRecommendationCatalog.engines !== 6 || Object.keys(liveRecommendationCatalog.catalog).length !== 6) throw new Error("SQL recommendation API catalog was incomplete");
   const liveOracleXrayCatalog = await request("/api/performance/oracle-sql-id/catalog", token);
   if (liveOracleXrayCatalog.engine !== "oracle" || liveOracleXrayCatalog.totalChecks !== 22 || liveOracleXrayCatalog.catalog.length !== 22 || !/Diagnostics or Tuning Pack/.test(liveOracleXrayCatalog.licensingNote)) throw new Error("Oracle SQL_ID X-Ray API catalog was incomplete");
   const unsafeOracleXray = await fetch("http://127.0.0.1:17872/api/performance/oracle-sql-id/check", { method: "POST", headers: { "Content-Type": "application/json", "X-DBridge-Token": token }, body: JSON.stringify({ check: "history", identifier: "bad';drop", connection: {} }) });

@@ -3,24 +3,26 @@
  *
  * This is the one place in DBridge where text typed by the operator reaches a
  * remote command interpreter, so the guards live here rather than in the route
- * layer: the host must already be trusted in known_hosts, its key is verified
- * on every connect, sessions are capped and idle-expired, and credentials are
- * used for the handshake and then dropped. Nothing here is ever written to disk.
+ * layer: a first-seen key must be approved in Studio and is then pinned locally;
+ * every later handshake must match it. Sessions are capped and idle-expired, and credentials are
+ * used for the handshake and then dropped. Only non-secret host fingerprints are persisted.
  */
 
 import { Client } from "ssh2";
 import { readFile } from "node:fs/promises";
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { isIP } from "node:net";
+import { randomBytes } from "node:crypto";
+import { createServer as createTcpServer, isIP } from "node:net";
+import { fingerprintSshHostKey, forgetTrustedSshHost, getTrustedSshHost, inspectSshTrust, trustSshHost, validateSshFingerprint } from "./ssh-trust.mjs";
 
 export const SSH_TERMINAL_LIMITS = {
-  maxSessions: 4,
+  maxSessions: 8,
+  maxForwardsPerSession: 4,
   idleMs: 15 * 60 * 1000,
   maxInputBytes: 8 * 1024,
   handshakeMs: 20000,
   scrollbackBytes: 256 * 1024,
+  maxSftpEntries: 500,
+  maxSftpDownloadBytes: 2 * 1024 * 1024,
 };
 
 const sessions = new Map();
@@ -56,55 +58,34 @@ export function validateSshTarget(value) {
   const privateKeyPath = String(value.privateKeyPath || "").trim();
   if (authMethod === "key" && !privateKeyPath) throw new Error("Select the private key file to use");
 
-  return { host, port: Number(portRaw), username, authMethod, privateKeyPath };
+  const keepaliveSeconds = Math.min(Math.max(Number(value.keepaliveSeconds) || 30, 5), 300);
+  const cols = Math.min(Math.max(Number(value.cols) || 100, 20), 500);
+  const rows = Math.min(Math.max(Number(value.rows) || 30, 5), 200);
+  return { host, port: Number(portRaw), username, authMethod, privateKeyPath, keepaliveSeconds, cols, rows };
 }
 
-/* ---------- known_hosts verification ---------- */
+export function validateSftpPath(value) {
+  const path = String(value || ".").trim() || ".";
+  if (path.length > 2048 || path.includes("\0") || /[\r\n]/.test(path)) throw new Error("The remote SFTP path is invalid");
+  return path;
+}
 
-// OpenSSH stores either a plain hostname or an HMAC-SHA1 of it under a salt.
-function knownHostMatches(entryHost, host, port) {
-  const candidates = port === 22 ? [host, `[${host}]:${port}`] : [`[${host}]:${port}`];
-  for (const raw of entryHost.split(",")) {
-    const name = raw.trim();
-    if (!name) continue;
-    if (name.startsWith("|1|")) {
-      const [, salt, digest] = name.split("|").slice(1);
-      if (!salt || !digest) continue;
-      for (const candidate of candidates) {
-        const computed = createHmac("sha1", Buffer.from(salt, "base64")).update(candidate).digest("base64");
-        if (computed === digest) return true;
-      }
-      continue;
-    }
-    if (candidates.includes(name)) return true;
+export function validateLocalForwardTarget(value) {
+  const remoteHost = normalizeSshHost(value.remoteHost || "127.0.0.1");
+  const remotePort = Number(value.remotePort);
+  const requestedLocalPort = value.localPort === "" || value.localPort === undefined ? 0 : Number(value.localPort);
+  if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65535) throw new Error("Remote port must be between 1 and 65535");
+  if (!Number.isInteger(requestedLocalPort) || requestedLocalPort < 0 || requestedLocalPort > 65535 || (requestedLocalPort > 0 && requestedLocalPort < 1024)) {
+    throw new Error("Local port must be automatic (0) or between 1024 and 65535");
   }
-  return false;
+  return { remoteHost, remotePort, requestedLocalPort };
 }
 
-async function readKnownHostKeys(host, port) {
-  const path = join(homedir(), ".ssh", "known_hosts");
-  let text;
-  try { text = await readFile(path, "utf8"); }
-  catch { throw new Error("No known_hosts file was found. Connect once with the OpenSSH client so the host key is recorded."); }
-
-  const keys = [];
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    // Skip the optional @cert-authority / @revoked marker.
-    const parts = (trimmed.startsWith("@") ? trimmed.slice(trimmed.indexOf(" ") + 1) : trimmed).split(/\s+/);
-    if (parts.length < 3) continue;
-    const [entryHost, keyType, keyData] = parts;
-    if (!knownHostMatches(entryHost, host, port)) continue;
-    keys.push({ keyType, keyData });
-  }
-  if (!keys.length) throw new Error(`${host} is not in known_hosts. Connect once with the OpenSSH client and accept the key before using the terminal.`);
-  return keys;
-}
+/* ---------- DBridge trust-on-first-use verification ---------- */
 
 export async function preflightSshTarget(input) {
   const target = validateSshTarget(input);
-  const keys = await readKnownHostKeys(target.host, target.port);
+  const trust = await inspectSshTrust({ ...target, timeoutMs: SSH_TERMINAL_LIMITS.handshakeMs });
   return {
     ok: true,
     host: target.host,
@@ -112,20 +93,23 @@ export async function preflightSshTarget(input) {
     username: target.username,
     authMethod: target.authMethod,
     addressFamily: isIP(target.host) || 0,
-    knownHostKeys: keys.length,
-    trusted: true,
+    fingerprint: trust.fingerprint,
+    keyType: trust.keyType,
+    hostKeys: [{ type: trust.keyType, fingerprint: trust.fingerprint }],
+    trustStatus: trust.trustStatus,
+    trusted: trust.trusted,
+    requiresTrust: trust.requiresTrust,
+    previousFingerprint: trust.previousFingerprint,
+    firstSeenAt: trust.firstSeenAt,
+    keepaliveSeconds: target.keepaliveSeconds,
+    credentialSent: false,
   };
 }
 
-function keyMatchesKnownHosts(presented, knownKeys) {
-  const presentedData = presented.toString("base64");
-  return knownKeys.some((known) => {
-    const candidate = Buffer.from(known.keyData, "base64");
-    const offered = Buffer.from(presentedData, "base64");
-    return candidate.length === offered.length && timingSafeEqual(candidate, offered);
-  });
+export async function forgetSshHostTrust(input) {
+  const target = validateSshTarget(input);
+  return await forgetTrustedSshHost(target.host, target.port, input.confirmation);
 }
-
 /* ---------- session lifecycle ---------- */
 
 function disposeSession(session, reason) {
@@ -134,6 +118,11 @@ function disposeSession(session, reason) {
   clearInterval(session.idleTimer);
   session.emit({ type: "closed", reason });
   session.listeners.clear();
+  for (const forwarding of session.forwards?.values?.() || []) {
+    for (const socket of forwarding.sockets || []) socket.destroy();
+    try { forwarding.server.close(); } catch { /* already closed */ }
+  }
+  session.forwards?.clear?.();
   try { session.stream?.end(); } catch { /* already gone */ }
   try { session.client?.end(); } catch { /* already gone */ }
   sessions.delete(session.id);
@@ -148,7 +137,15 @@ export async function openSshSession(input) {
     throw new Error(`Only ${SSH_TERMINAL_LIMITS.maxSessions} SSH terminal sessions can be open at once`);
   }
   const target = validateSshTarget(input);
-  const knownKeys = await readKnownHostKeys(target.host, target.port);
+  let pinnedHost = await getTrustedSshHost(target.host, target.port);
+  let expectedFingerprint;
+  if (pinnedHost) expectedFingerprint = pinnedHost.fingerprint;
+  else if (input.trustHostKey === true) {
+    expectedFingerprint = validateSshFingerprint(input.hostFingerprint);
+    // The operator approved the scan result before credentials are used. Pin it now,
+    // so a bad password does not force approval again and the real handshake is still checked.
+    pinnedHost = await trustSshHost(target.host, target.port, expectedFingerprint, input.hostKeyType);
+  } else throw new Error("Inspect and approve this SSH host key before the first connection");
 
   let privateKey;
   if (target.authMethod === "key") {
@@ -164,7 +161,10 @@ export async function openSshSession(input) {
     authMethod: target.authMethod,
     openedAt: new Date().toISOString(),
     lastActivity: Date.now(),
+    keepaliveSeconds: target.keepaliveSeconds,
+    hostKeys: [{ type: pinnedHost?.keyType || String(input.hostKeyType || "ssh-host-key"), fingerprint: expectedFingerprint }],
     listeners: new Set(),
+    forwards: new Map(),
     scrollback: [],
     scrollbackBytes: 0,
     disposed: false,
@@ -191,7 +191,7 @@ export async function openSshSession(input) {
     const handshakeTimer = setTimeout(() => fail(new Error("SSH handshake timed out")), SSH_TERMINAL_LIMITS.handshakeMs);
 
     client.on("ready", () => {
-      client.shell({ term: "xterm-256color", cols: 80, rows: 24 }, (error, stream) => {
+      client.shell({ term: "xterm-256color", cols: target.cols, rows: target.rows }, (error, stream) => {
         if (error) { clearTimeout(handshakeTimer); return fail(error); }
         session.stream = stream;
 
@@ -215,7 +215,7 @@ export async function openSshSession(input) {
       });
     });
 
-    client.on("error", (error) => { clearTimeout(handshakeTimer); fail(error); });
+    client.on("error", (error) => { clearTimeout(handshakeTimer); fail(session.hostKeyMismatch ? new Error("SSH host key changed. The connection was blocked before authentication.") : error); });
     client.on("close", () => {
       clearTimeout(handshakeTimer);
       if (!settled) fail(new Error("The SSH connection closed during the handshake"));
@@ -227,8 +227,16 @@ export async function openSshSession(input) {
       port: target.port,
       username: target.username,
       readyTimeout: SSH_TERMINAL_LIMITS.handshakeMs,
-      // Refuse any key that is not already trusted; never prompt to accept one.
-      hostVerifier: (key) => keyMatchesKnownHosts(key, knownKeys),
+      keepaliveInterval: target.keepaliveSeconds * 1000,
+      keepaliveCountMax: 3,
+      // Credentials are used only if the presented key matches the pinned or just-approved fingerprint.
+      hostVerifier: (key) => {
+        const presentedFingerprint = fingerprintSshHostKey(key);
+        const accepted = presentedFingerprint === expectedFingerprint;
+        session.verifiedHostKey = presentedFingerprint;
+        session.hostKeyMismatch = !accepted;
+        return accepted;
+      },
     };
     if (target.authMethod === "agent") {
       const agent = process.env.SSH_AUTH_SOCK || (process.platform === "win32" ? "\\\\.\\pipe\\openssh-ssh-agent" : "");
@@ -244,6 +252,7 @@ export async function openSshSession(input) {
 
     try { client.connect(config); } catch (error) { fail(error); }
   });
+
 
   session.idleTimer = setInterval(() => {
     if (Date.now() - session.lastActivity > SSH_TERMINAL_LIMITS.idleMs) {
@@ -263,6 +272,11 @@ export function describeSession(session) {
     username: session.username,
     authMethod: session.authMethod,
     openedAt: session.openedAt,
+    lastActivity: new Date(session.lastActivity).toISOString(),
+    keepaliveSeconds: session.keepaliveSeconds,
+    hostKeys: session.hostKeys,
+    verifiedHostKey: session.verifiedHostKey || "",
+    forwards: [...session.forwards.values()].map(describeForward),
   };
 }
 
@@ -309,6 +323,142 @@ export function resizeSshSession(sessionId, cols, rows) {
   touch(session);
   session.stream.setWindow(safeRows, safeCols, 0, 0);
   return { ok: true, cols: safeCols, rows: safeRows };
+}
+
+function describeForward(forwarding) {
+  return {
+    forwardId: forwarding.id,
+    bindHost: "127.0.0.1",
+    localPort: forwarding.localPort,
+    remoteHost: forwarding.remoteHost,
+    remotePort: forwarding.remotePort,
+    openedAt: forwarding.openedAt,
+    activeConnections: forwarding.sockets.size,
+  };
+}
+
+export function listSshForwards(sessionId) {
+  const session = requireSession(sessionId);
+  return [...session.forwards.values()].map(describeForward);
+}
+
+export async function openSshLocalForward(sessionId, input) {
+  const session = requireSession(sessionId);
+  if (session.forwards.size >= SSH_TERMINAL_LIMITS.maxForwardsPerSession) {
+    throw new Error(`Only ${SSH_TERMINAL_LIMITS.maxForwardsPerSession} local forwards can be open per SSH session`);
+  }
+  const target = validateLocalForwardTarget(input);
+  const forwarding = {
+    id: randomBytes(8).toString("hex"),
+    localPort: 0,
+    remoteHost: target.remoteHost,
+    remotePort: target.remotePort,
+    openedAt: new Date().toISOString(),
+    sockets: new Set(),
+    server: null,
+  };
+  const server = createTcpServer((socket) => {
+    forwarding.sockets.add(socket);
+    socket.on("close", () => forwarding.sockets.delete(socket));
+    socket.on("error", () => { /* the socket closes itself */ });
+    session.client.forwardOut("127.0.0.1", Number(socket.remotePort) || 0, target.remoteHost, target.remotePort, (error, stream) => {
+      if (error) { socket.destroy(new Error("The SSH destination refused the forwarded connection")); return; }
+      stream.on("error", () => socket.destroy());
+      socket.pipe(stream).pipe(socket);
+    });
+  });
+  forwarding.server = server;
+  await new Promise((resolvePromise, rejectPromise) => {
+    const fail = (error) => { server.close(); rejectPromise(error); };
+    server.once("error", fail);
+    server.listen(target.requestedLocalPort, "127.0.0.1", () => {
+      server.off("error", fail);
+      const address = server.address();
+      forwarding.localPort = typeof address === "object" && address ? address.port : target.requestedLocalPort;
+      resolvePromise();
+    });
+  });
+  session.forwards.set(forwarding.id, forwarding);
+  touch(session);
+  session.emit({ type: "forward", action: "opened", forward: describeForward(forwarding) });
+  return describeForward(forwarding);
+}
+
+export async function closeSshForward(sessionId, forwardId) {
+  const session = requireSession(sessionId);
+  const forwarding = session.forwards.get(String(forwardId || ""));
+  if (!forwarding) throw new Error("That local forward is no longer open");
+  for (const socket of forwarding.sockets) socket.destroy();
+  await new Promise((resolvePromise) => forwarding.server.close(() => resolvePromise()));
+  session.forwards.delete(forwarding.id);
+  touch(session);
+  session.emit({ type: "forward", action: "closed", forwardId: forwarding.id });
+  return { ok: true, forwardId: forwarding.id };
+}
+
+function openSftp(session) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    session.client.sftp((error, sftp) => error ? rejectPromise(error) : resolvePromise(sftp));
+  });
+}
+
+export async function listSftpDirectory(sessionId, remotePath) {
+  const session = requireSession(sessionId);
+  const path = validateSftpPath(remotePath);
+  const sftp = await openSftp(session);
+  try {
+    const entries = await new Promise((resolvePromise, rejectPromise) => {
+      sftp.readdir(path, (error, list) => error ? rejectPromise(error) : resolvePromise(list || []));
+    });
+    if (entries.length > SSH_TERMINAL_LIMITS.maxSftpEntries) throw new Error(`That directory has more than ${SSH_TERMINAL_LIMITS.maxSftpEntries} entries. Open a narrower path.`);
+    touch(session);
+    return {
+      path,
+      entries: entries.map((entry) => ({
+        name: entry.filename,
+        longname: entry.longname,
+        type: entry.attrs?.isDirectory?.() ? "directory" : entry.attrs?.isSymbolicLink?.() ? "symlink" : "file",
+        size: Number(entry.attrs?.size || 0),
+        modifiedAt: entry.attrs?.mtime ? new Date(entry.attrs.mtime * 1000).toISOString() : null,
+        permissions: entry.attrs?.mode ? `0${(entry.attrs.mode & 0o777).toString(8)}` : "",
+      })).sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === "directory" ? -1 : 1)),
+    };
+  } finally {
+    try { sftp.end(); } catch { /* channel already closed */ }
+  }
+}
+
+export async function readSftpFile(sessionId, remotePath) {
+  const session = requireSession(sessionId);
+  const path = validateSftpPath(remotePath);
+  const sftp = await openSftp(session);
+  try {
+    const attrs = await new Promise((resolvePromise, rejectPromise) => {
+      sftp.stat(path, (error, value) => error ? rejectPromise(error) : resolvePromise(value));
+    });
+    if (!attrs?.isFile?.()) throw new Error("Only regular files can be downloaded");
+    if (attrs.size > SSH_TERMINAL_LIMITS.maxSftpDownloadBytes) throw new Error(`SFTP downloads are limited to ${SSH_TERMINAL_LIMITS.maxSftpDownloadBytes / 1024 / 1024} MB`);
+    const chunks = [];
+    let bytes = 0;
+    await new Promise((resolvePromise, rejectPromise) => {
+      const stream = sftp.createReadStream(path);
+      stream.on("data", (chunk) => {
+        bytes += chunk.length;
+        if (bytes > SSH_TERMINAL_LIMITS.maxSftpDownloadBytes) {
+          stream.destroy(new Error("The remote file exceeded the download limit"));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      stream.on("end", resolvePromise);
+      stream.on("error", rejectPromise);
+    });
+    touch(session);
+    const data = Buffer.concat(chunks);
+    return { path, size: data.length, data: data.toString("base64") };
+  } finally {
+    try { sftp.end(); } catch { /* channel already closed */ }
+  }
 }
 
 export function closeSshSession(sessionId) {
