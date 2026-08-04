@@ -110,3 +110,11 @@ test("adds the advanced DBGate and Snowflake-style SQL worksheet workspace",asyn
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   for(const selector of [".worksheet-tabs",".sql-workbench",".sql-inspector",".sql-history",".sql-scripts",".result-filter",".result-statistics"])assert.equal(css.includes(selector),true,selector);
 });
+test("routes database connections and safe DevOps URLs into their workspaces",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const behavior of ["connectToWorkspace","Connect → SQL Workspace","Connect → MongoDB Studio","DEVOPS URL / DEEP LINK","passDevopsUrl","Credential values are blocked in DevOps URLs","sshConnectionRequest"])assert.equal(source.includes(behavior),true,behavior);
+  const ssh=await readFile(new URL("../app/components/SshWorkspace.tsx",import.meta.url),"utf8");
+  for(const behavior of ["ConnectionRequest","connectionRequest?.requestId","target.protocol!==\"ssh:\"","setConnectionOpen(true)"])assert.equal(ssh.includes(behavior),true,behavior);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  assert.equal(css.includes(".devops-url-pass"),true,"DevOps URL control styling");
+});

@@ -392,6 +392,8 @@ export default function Home(){
   const [mirrorPassword,setMirrorPassword]=useState("");
   const [mirrorTlsMode,setMirrorTlsMode]=useState<DbForm["tlsMode"]>("require");
   const [devopsMode,setDevopsMode]=useState<DevopsMode>("kubernetes");
+  const [devopsUrl,setDevopsUrl]=useState("");
+  const [sshConnectionRequest,setSshConnectionRequest]=useState<{url:string;requestId:number}|null>(null);
   const [kubeContext,setKubeContext]=useState("");
   const [kubeNamespace,setKubeNamespace]=useState("default");
   const [kubeView,setKubeView]=useState<KubeGuiView>("overview");
@@ -554,6 +556,15 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     try{const data=await agentCall("/api/connections/check",{method:"POST",body:JSON.stringify({...payload(),timeoutMs:30000})});setConnectionState("connected");setConnectionFingerprint(fingerprint());setConnectionMessage(`${data.adapter?.name||adapterDefaults[form.engine].name} ready · ${data.durationMs} ms · ${data.access} access`);notify("Database connection validated");if(loadObjects)await loadCatalog(true);return true}
     catch(error){const message=error instanceof Error?error.message:"Connection failed";setConnectionState("failed");setConnectionMessage(message);notify(message);return false}
   };
+  const connectToWorkspace=async()=>{
+    const destination:StudioTool=form.engine==="mongodb"?"mongodb":"sql";
+    setStudioTool(destination);
+    const connected=await connect(true);
+    if(!connected){openConnectionPanel();return}
+    setConnectionPanelOpen(false);
+    if(destination==="sql")requestAnimationFrame(()=>editorRef.current?.focus());
+    notify(`${adapterDefaults[form.engine].name} connected; ${destination==="sql"?"SQL Workspace":"MongoDB Studio"} ready`);
+  };
   const runSql=async(mode:"selected"|"all"|"explain"="selected",overrideSql="")=>{
     let statement=(overrideSql.trim()||(mode==="all"?sql.trim():selectedStatement())).replace(/\s+$/,"");
     if(!statement)return notify("Enter a SQL statement first");
@@ -698,6 +709,37 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
     finally{setMongoBusy(false)}
   };
   const selectDevopsTool=(tool:string)=>{setDevopsTool(tool);setDevopsAction(devopsActionMap[tool]?.[0]||"status");setDevopsTarget("");setDevopsSecondary("");setDevopsScope("")};
+  const passDevopsUrl=()=>{
+    const raw=devopsUrl.trim();
+    if(!raw)return notify("Paste a GitHub, SSH, Kubernetes, or Docker URL first");
+    if(raw.length>2048||/[\r\n\0]/.test(raw))return notify("Enter a valid DevOps URL");
+    let parsed:URL;
+    try{parsed=new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)?raw:`https://${raw}`)}catch{return notify("Enter a valid DevOps URL")}
+    if(parsed.password||[...parsed.searchParams.keys()].some(key=>/(password|passwd|secret|token|api[-_]?key|private[-_]?key)/i.test(key)))return notify("Credential values are blocked in DevOps URLs");
+    const protocol=parsed.protocol.toLowerCase();
+    if(parsed.hostname.toLowerCase()==="github.com"){
+      const [owner,repository]=parsed.pathname.split("/").filter(Boolean);
+      if(!owner||!repository)return notify("Use a GitHub repository URL such as https://github.com/owner/repository");
+      setDevopsMode("github");setGitSource("github");setGitView("overview");setGitRepository(`${owner}/${repository.replace(/\.git$/i,"")}`);setDevopsData(null);setDevopsUrl("");notify("GitHub URL passed to Git & GitHub");return;
+    }
+    if(protocol==="ssh:"){
+      if(!parsed.hostname||!parsed.username)return notify("SSH URLs must include a username and host, for example ssh://user@host:22");
+      setDevopsMode("ssh");setDevopsData(null);setSshConnectionRequest({url:parsed.toString(),requestId:Date.now()});setDevopsUrl("");notify("SSH URL passed to a new terminal profile");return;
+    }
+    if(protocol==="kubernetes:"||protocol==="k8s:"){
+      const context=parsed.hostname||parsed.pathname.split("/").filter(Boolean)[0]||"";
+      const pathParts=parsed.pathname.split("/").filter(Boolean);
+      const namespace=parsed.searchParams.get("namespace")||pathParts.at(-1)||"default";
+      if(!context)return notify("Kubernetes URLs must include a context");
+      setDevopsMode("kubernetes");setKubeContext(context);setKubeNamespace(namespace);setKubeView("overview");setDevopsData(null);setDevopsUrl("");notify("Kubernetes URL passed to the cluster workspace");return;
+    }
+    if(protocol==="docker:"){
+      const target=parsed.hostname||parsed.pathname.split("/").filter(Boolean)[0]||"";
+      if(!target)return notify("Docker URLs must include a container or image target");
+      setDevopsMode("docker");setDockerTarget(target);setDockerView("logs");setDevopsData(null);setDevopsUrl("");notify("Docker URL passed to Logs & inspect");return;
+    }
+    notify("Supported DevOps URLs: GitHub, ssh://, kubernetes://, k8s://, and docker://");
+  };
   const compareToolVersions=async(save=false)=>{
     setDevopsBusy(true);setDevopsData(null);
     try{const data=await agentCall("/api/devops/"+(save?"version-baseline":"version-comparison"),save?{method:"POST",body:"{}"}:{});setDevopsData(data);notify(save?"DevOps version baseline saved":"Tool versions compared")}
@@ -912,8 +954,8 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
                 <div className="field-pair"><label>HOST<input value={form.host} onChange={event=>patchForm({host:event.target.value})} placeholder={form.engine==="snowflake"?"account identifier":"db.company.net"}/></label><label>PORT<input value={form.port} onChange={event=>patchForm({port:event.target.value})}/></label></div>
                 <label>DATABASE / SERVICE<input value={form.database} onChange={event=>patchForm({database:event.target.value})} placeholder="Database, service, project, or warehouse"/></label>
                 <label>USERNAME / PROFILE<input autoComplete="username" value={form.username} onChange={event=>patchForm({username:event.target.value})}/></label>
-                {form.authMode==="password"&&<label>PASSWORD<input type="password" autoComplete="current-password" value={form.password} onChange={event=>patchForm({password:event.target.value})}/></label>}
-                <div className="connector-buttons"><button className="secondary" onClick={applyDefaults}>Reset defaults</button><button className="primary" onClick={()=>connect(true)} disabled={connectionState==="connecting"}>{connectionState==="connecting"?"Validating…":"Connect & browse"}</button></div>
+                {form.authMode==="password"&&<label>PASSWORD<input type="password" autoComplete="current-password" value={form.password} onChange={event=>patchForm({password:event.target.value})} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();connectToWorkspace()}}}/></label>}
+                <div className="connector-buttons"><button className="secondary" onClick={applyDefaults}>Reset defaults</button><button className="primary" onClick={connectToWorkspace} disabled={connectionState==="connecting"}>{connectionState==="connecting"?"Validating…":form.engine==="mongodb"?"Connect → MongoDB Studio":"Connect → SQL Workspace"}</button></div>
                 <div className={`connection-message ${connectionState}`}><i/><span><b>{activeAdapter?.name||adapterDefaults[form.engine].name}</b><small>{connectionMessage}</small></span></div>
                 <div className="capability-list"><span>{activeAdapter?.directAvailable?"Bundled direct driver":activeAdapter?.clientAvailable?"Approved local client":"Client readiness pending"}</span><span>Catalog browser</span><span>SQL + diagnostics</span><span>Environment autofill</span></div>
               </div>
@@ -1020,6 +1062,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
               <header className="module-head"><div><i>DO</i><p><b>DevOps & Remote Operations</b><small>Visual Kubernetes, Docker, Git/GitHub, Ansible, delivery evidence and verified SSH</small></p></div><span>{Object.values(toolInventory).filter(tool=>tool.available).length}/{Object.keys(toolInventory).length||20} tools ready</span></header>
               <nav className="module-tabs devops-tabs">{(["kubernetes","docker","github","ansible","tooling","delivery","ssh","changes"] as DevopsMode[]).map(mode=><button key={mode} className={devopsMode===mode?"active":""} onClick={()=>{setDevopsMode(mode);setDevopsData(null);setDevopsSearch("")}}>{mode==="kubernetes"?"Kubernetes GUI":mode==="docker"?"Docker GUI":mode==="github"?"Git & GitHub":mode==="ansible"?"Ansible GUI":mode==="tooling"?"Toolbox":mode==="delivery"?"Delivery & Kafka":mode==="ssh"?"SSH terminals":"Controlled changes"}</button>)}</nav>
               <div className="module-controls devops-controls">
+                <div className="devops-url-pass"><label>DEVOPS URL / DEEP LINK<input value={devopsUrl} onChange={event=>setDevopsUrl(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();passDevopsUrl()}}} placeholder="GitHub · ssh://user@host:22 · kubernetes://context/namespace · docker://container"/></label><button className="secondary" onClick={passDevopsUrl}>Pass URL</button><small>Routes the URL to the matching workspace. Credentials in URLs are blocked.</small></div>
                 {devopsMode==="kubernetes"&&<><div className="double-fields"><label>KUBE CONTEXT<input value={kubeContext} onChange={event=>setKubeContext(event.target.value)} placeholder="Current context when empty"/></label><label>NAMESPACE<input value={kubeNamespace} onChange={event=>setKubeNamespace(event.target.value)} placeholder="default"/></label></div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(["overview","workloads","compute","network","events"] as KubeGuiView[]).map(view=><button key={view} className={kubeView===view?"active":""} onClick={()=>setKubeView(view)}>{view}</button>)}</nav><label>SEARCH RESOURCES<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="pod, node, warning…"/></label></div><p>A Lens-style resource explorer for cluster health, workloads, services, metrics, and warning events.</p></>}
                 {devopsMode==="docker"&&<><div className="double-fields"><label>CONTAINER FOR DETAILS<input value={dockerTarget} onChange={event=>setDockerTarget(event.target.value)} placeholder="Required only for Logs & inspect"/></label><label>SEARCH RESOURCES<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="container, image, port…"/></label></div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(["overview","containers","images","storage","network","logs"] as DockerGuiView[]).map(view=><button key={view} className={dockerView===view?"active":""} onClick={()=>setDockerView(view)}>{view==="logs"?"Logs & inspect":view}</button>)}</nav></div><p>Docker Desktop-style visibility for containers, images, volumes, networks, capacity, stats, logs, inspect data, and processes.</p></>}
                 {devopsMode==="github"&&<><div className="double-fields"><label>WORKSPACE SOURCE<select value={gitSource} onChange={event=>{setGitSource(event.target.value as "github"|"git");setGitView("overview");setDevopsData(null)}}><option value="github">GitHub cloud via gh</option><option value="git">Local Git working tree</option></select></label>{gitSource==="github"?<label>GITHUB REPOSITORY<input value={gitRepository} onChange={event=>setGitRepository(event.target.value)} placeholder="owner/repository (optional)"/></label>:<label>WORKING FOLDER<input value={gitCwd} onChange={event=>setGitCwd(event.target.value)} placeholder="C:\work\repository"/></label>}</div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(gitSource==="github"?["overview","repositories","pullRequests","workflows","issues"]:["overview","status","branches","commits","diff"]).map(view=><button key={view} className={gitView===view?"active":""} onClick={()=>setGitView(view as GitGuiView)}>{view.replace(/([A-Z])/g," $1")}</button>)}</nav><label>SEARCH GIT EVIDENCE<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="branch, author, PR…"/></label></div><p>A GitKraken-inspired operations workspace for local history plus authenticated GitHub repositories, PRs, issues, and workflow runs.</p></>}
@@ -1030,7 +1073,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
                 {devopsMode==="changes"&&<><div className="double-fields"><label>PLATFORM<select value={changePlatform} onChange={event=>{const platform=event.target.value as "kubernetes"|"docker";setChangePlatform(platform);setChangeAction(platform==="kubernetes"?"restartDeployment":"restartContainer")}}><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option></select></label><label>ACTION<select value={changeAction} onChange={event=>setChangeAction(event.target.value)}>{(changePlatform==="kubernetes"?["restartDeployment","scaleDeployment","deletePod"]:["startContainer","stopContainer","restartContainer","pauseContainer","unpauseContainer"]).map(action=><option key={action}>{action}</option>)}</select></label></div><div className="triple-fields"><label>TARGET<input value={changeTarget} onChange={event=>setChangeTarget(event.target.value)} placeholder={changePlatform==="kubernetes"?"deployment or pod":"container"}/></label><label>REPLICAS<input value={changeValue} onChange={event=>setChangeValue(event.target.value)} disabled={changeAction!=="scaleDeployment"}/></label><label>CHANGE / INCIDENT REFERENCE<input value={changeReference} onChange={event=>setChangeReference(event.target.value)} placeholder="CHG-12345"/></label></div><div className="change-actions"><button className="secondary" onClick={()=>runContainerChange(true)} disabled={devopsBusy}>Preview permission</button><button className="secondary" onClick={loadContainerAudit} disabled={devopsBusy}>Audit history</button><button className="danger-action" onClick={()=>runContainerChange(false)} disabled={devopsBusy}>Apply audited change</button></div><small className="safety-note">Changes require read-write mode, an explicit confirmation, permission preflight, and an audit record. Kubernetes also uses the context and namespace above.</small></>}
                 {(["kubernetes","docker","github","ansible","tooling"] as DevopsMode[]).includes(devopsMode)&&<button className="primary refresh-visual" onClick={runDevops} disabled={devopsBusy}>{devopsBusy?"Refreshing…":devopsMode==="tooling"?"Run inspection":"Refresh visual workspace"}</button>}
               </div>
-              <section className="module-body devops-body">{devopsMode==="ssh"?<SshWorkspace environment={environment} agentToken={agentToken} agentCall={agentCall} notify={notify}/>:(["kubernetes","docker","github","ansible"] as DevopsMode[]).includes(devopsMode)?<DevopsVisualWorkspace kind={(devopsMode==="github"?gitSource:devopsMode) as "kubernetes"|"docker"|"github"|"git"|"ansible"} activeView={devopsMode==="kubernetes"?kubeView:devopsMode==="docker"?dockerView:devopsMode==="github"?gitView:ansibleView} data={devopsData} search={devopsSearch} available={toolInventory[devopsMode==="github"?gitSource:devopsMode]?.available===true}/>:<>
+              <section className="module-body devops-body">{devopsMode==="ssh"?<SshWorkspace environment={environment} agentToken={agentToken} agentCall={agentCall} notify={notify} connectionRequest={sshConnectionRequest}/>:(["kubernetes","docker","github","ansible"] as DevopsMode[]).includes(devopsMode)?<DevopsVisualWorkspace kind={(devopsMode==="github"?gitSource:devopsMode) as "kubernetes"|"docker"|"github"|"git"|"ansible"} activeView={devopsMode==="kubernetes"?kubeView:devopsMode==="docker"?dockerView:devopsMode==="github"?gitView:ansibleView} data={devopsData} search={devopsSearch} available={toolInventory[devopsMode==="github"?gitSource:devopsMode]?.available===true}/>:<>
                 <div className="tool-inventory">{Object.entries(toolInventory).map(([id,tool])=><article key={id} className={tool.available?"ready":"missing"}><i/><span><b>{id}</b><small>{tool.version}</small></span></article>)}</div>
                 {!devopsData&&<div className="module-empty"><span>OPS</span><b>Safe operations from one shared context</b><small>All commands are built from server-side allowlists. Free-form shell execution is not exposed.</small></div>}
                 {devopsData&&<div className="evidence-view">

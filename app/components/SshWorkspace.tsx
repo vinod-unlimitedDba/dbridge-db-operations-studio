@@ -18,6 +18,7 @@ type Profile = { id:string; name:string; environment:string; host:string; port:s
 type Snippet = { id:string; name:string; command:string };
 type SftpEntry = { name:string; longname:string; type:"directory"|"file"|"symlink"; size:number; modifiedAt:string|null; permissions:string };
 type Settings = { fontSize:number; theme:"midnight"|"forest"|"light"; keepaliveSeconds:number; cols:number; rows:number; toolsPinned:boolean };
+type ConnectionRequest = { url:string; requestId:number };
 type PreflightEvidence = { error?:string; host?:string; port?:number; fingerprint?:string; keyType?:string; hostKeys?:HostKey[]; trustStatus?:"new"|"trusted"|"changed"; trusted?:boolean; requiresTrust?:boolean; previousFingerprint?:string; firstSeenAt?:string; credentialSent?:boolean };
 type ApiResult = Partial<SessionDescriptor> & {
   target?:PreflightEvidence; sessions?:SessionDescriptor[]; path?:string; entries?:SftpEntry[];
@@ -96,7 +97,7 @@ function openedSession(result:ApiResult):SessionDescriptor{
   return{sessionId:result.sessionId,host:result.host,port:result.port,username:result.username,authMethod:result.authMethod,openedAt:result.openedAt,lastActivity:result.lastActivity,keepaliveSeconds:result.keepaliveSeconds,hostKeys:result.hostKeys,verifiedHostKey:result.verifiedHostKey,forwards:result.forwards||[]};
 }
 
-export default function SshWorkspace({environment,agentToken,agentCall,notify}:{environment:string;agentToken:string;agentCall:AgentCall;notify:(message:string)=>void}){
+export default function SshWorkspace({environment,agentToken,agentCall,notify,connectionRequest}:{environment:string;agentToken:string;agentCall:AgentCall;notify:(message:string)=>void;connectionRequest?:ConnectionRequest|null}){
   const [form,setForm]=useState({name:"",host:"",port:"22",username:"",authMethod:"agent" as AuthMethod,keyPath:"",password:"",passphrase:""});
   const [profiles,setProfiles]=useState<Profile[]>([]);const [selectedProfile,setSelectedProfile]=useState("");
   const [sessions,setSessions]=useState<Session[]>([]);const [activeId,setActiveId]=useState("");const [secondaryId,setSecondaryId]=useState("");
@@ -123,6 +124,16 @@ export default function SshWorkspace({environment,agentToken,agentCall,notify}:{
   useEffect(()=>{localStorage.setItem(PROFILE_KEY,JSON.stringify(profiles))},[profiles]);
   useEffect(()=>{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings))},[settings]);
   useEffect(()=>{localStorage.setItem(SNIPPET_KEY,JSON.stringify(snippets))},[snippets]);
+  useEffect(()=>{
+    if(!connectionRequest?.url)return;
+    try{
+      const target=new URL(connectionRequest.url);
+      if(target.protocol!=="ssh:"||!target.hostname||!target.username)return;
+      const username=decodeURIComponent(target.username);
+      setForm(value=>({...value,name:`${username}@${target.hostname}`,host:target.hostname,port:target.port||"22",username,authMethod:"agent",keyPath:"",password:"",passphrase:""}));
+      setSelectedProfile("");setEvidence(null);setPanel(null);setConnectionOpen(true);
+    }catch{/* parent validates the URL before passing it */}
+  },[connectionRequest?.requestId]);
 
   const appendOutput=(sessionId:string,value:string,connected?:boolean)=>setSessions(items=>items.map(item=>item.sessionId===sessionId?{...item,output:(item.output+value).slice(-260000),connected:connected??item.connected,unread:activeRef.current!==sessionId||item.unread}:item));
   const consumeStream=async(sessionId:string)=>{controllers.current[sessionId]?.abort();const controller=new AbortController();controllers.current[sessionId]=controller;
