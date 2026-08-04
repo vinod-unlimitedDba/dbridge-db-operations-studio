@@ -22,6 +22,7 @@ type Environment = "Production" | "SIT" | "UAT-Test" | "DEV";
 type Adapter = { name:string; port:number; tier:string; family:string; auth:string; driver?:string; client?:string; available:boolean; directAvailable:boolean; clientAvailable:boolean; preferredAccess:string };
 type DbForm = { environment:Environment; engine:string; authMode:"password"|"context"; tlsMode:"prefer"|"require"|"disable"; host:string; port:string; database:string; username:string; password:string };
 type Profile = Omit<DbForm,"password"> & { id:string; name:string };
+type SshConnectionRequest = { url:string; requestId:number; username:string; password:string; remember:boolean; autoConnect:boolean };
 type CatalogObject = { type:string; schema:string; name:string };
 type GridResult = { columns:string[]; rows:(string|number|boolean|null)[][]; raw:string; stderr:string; durationMs:number };
 type Completion = { label:string; detail:string; insert:string };
@@ -316,7 +317,9 @@ export default function Home(){
   const [form,setForm]=useState<DbForm>(defaultForm());
   const [profiles,setProfiles]=useState<Profile[]>([]);
   const [profileId,setProfileId]=useState("");
+  const [activeCredentialId,setActiveCredentialId]=useState("");
   const [profileName,setProfileName]=useState("");
+  const [rememberDbPassword,setRememberDbPassword]=useState(true);
   const [connectionState,setConnectionState]=useState<"idle"|"connecting"|"connected"|"failed">("idle");
   const [connectionPanelOpen,setConnectionPanelOpen]=useState(false);
   const [connectionMessage,setConnectionMessage]=useState("Enter an approved target and validate access.");
@@ -393,7 +396,10 @@ export default function Home(){
   const [mirrorTlsMode,setMirrorTlsMode]=useState<DbForm["tlsMode"]>("require");
   const [devopsMode,setDevopsMode]=useState<DevopsMode>("kubernetes");
   const [devopsUrl,setDevopsUrl]=useState("");
-  const [sshConnectionRequest,setSshConnectionRequest]=useState<{url:string;requestId:number}|null>(null);
+  const [devopsUsername,setDevopsUsername]=useState("");
+  const [devopsPassword,setDevopsPassword]=useState("");
+  const [rememberDevopsPassword,setRememberDevopsPassword]=useState(true);
+  const [sshConnectionRequest,setSshConnectionRequest]=useState<SshConnectionRequest|null>(null);
   const [kubeContext,setKubeContext]=useState("");
   const [kubeNamespace,setKubeNamespace]=useState("default");
   const [kubeView,setKubeView]=useState<KubeGuiView>("overview");
@@ -476,7 +482,7 @@ export default function Home(){
   const sshStreams=useRef<Record<string,AbortController>>({});
 
   const notify=(message:string)=>{setToast("");window.setTimeout(()=>setToast(message),10)};
-  const fingerprint=(value=form)=>JSON.stringify(value);
+  const fingerprint=(value=form,credentialId=activeCredentialId)=>JSON.stringify({...value,password:credentialId?"vault":Boolean(value.password),credentialId});
   const readyCount=Object.values(adapters).filter(adapter=>adapter.available).length;
   const activeAdapter=adapters[form.engine];
   const scopedProfiles=profiles.filter(profile=>profile.environment===environment&&profile.engine===form.engine);
@@ -522,7 +528,7 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
   useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setCommandOpen(value=>!value)}if(event.key==="Escape")setCommandOpen(false)};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
 
   const updateSqlText=(value:string,engine=form.engine)=>{setSql(value);setSqlTabs(items=>items.map(tab=>tab.id===activeSqlTabId?{...tab,content:value,engine,dirty:true,cursor:editorRef.current?.selectionStart||0}:tab))};
-  const switchSqlTab=(id:string)=>{const tab=sqlTabs.find(item=>item.id===id);if(!tab)return;if(tab.engine!==form.engine&&adapterDefaults[tab.engine]){const defaults=adapterDefaults[tab.engine];setForm(value=>({...value,engine:tab.engine,port:defaults.port,database:defaults.database,authMode:defaults.authMode,password:""}));setConnectionState("idle");setConnectionFingerprint("");setCatalog([])}setActiveSqlTabId(id);setSql(tab.content);setCompletion({items:[],start:0,end:0});setResult(null);setResultFilter("")};
+  const switchSqlTab=(id:string)=>{const tab=sqlTabs.find(item=>item.id===id);if(!tab)return;if(tab.engine!==form.engine&&adapterDefaults[tab.engine]){const defaults=adapterDefaults[tab.engine];setForm(value=>({...value,engine:tab.engine,port:defaults.port,database:defaults.database,authMode:defaults.authMode,password:""}));setActiveCredentialId("");setConnectionState("idle");setConnectionFingerprint("");setCatalog([])}setActiveSqlTabId(id);setSql(tab.content);setCompletion({items:[],start:0,end:0});setResult(null);setResultFilter("")};
   const addSqlTab=()=>{const id=`tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;const next:SqlWorksheet={id,name:`query_${String(sqlTabs.length+1).padStart(2,"0")}.sql`,engine:form.engine,content:sqlSamples[form.engine]||"SELECT *\nFROM table_name\nLIMIT 50;",dirty:true,cursor:0};setSqlTabs(items=>[...items,next].slice(0,20));setActiveSqlTabId(id);setSql(next.content);setResult(null);setResultFilter("")};
   const closeSqlTab=(id:string)=>{if(sqlTabs.length===1)return notify("Keep at least one SQL worksheet open");const index=sqlTabs.findIndex(item=>item.id===id);const next=sqlTabs.filter(item=>item.id!==id);setSqlTabs(next);if(activeSqlTabId===id){const fallback=next[Math.max(0,index-1)]||next[0];setActiveSqlTabId(fallback.id);setSql(fallback.content)}};
   const renameSqlTab=(id:string)=>{const current=sqlTabs.find(item=>item.id===id);if(!current)return;const name=window.prompt("Worksheet name",current.name)?.trim();if(name)setSqlTabs(items=>items.map(item=>item.id===id?{...item,name:name.slice(0,100),dirty:true}:item))};
@@ -530,42 +536,77 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
   const loadSqlScript=(script:SavedSqlScript)=>{updateSqlText(script.sql);setSqlInspectorOpen(false);notify(`${script.name} loaded into the active worksheet`)};
   const selectedStatement=()=>{const editor=editorRef.current;if(!editor)return sql.trim();const selected=sql.slice(editor.selectionStart,editor.selectionEnd).trim();return selected||sql.trim()};
   useEffect(()=>{const handler=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.altKey&&event.key.toLowerCase()==="n"){event.preventDefault();addSqlTab()}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[sqlTabs.length,form.engine]);
-  const patchForm=(patch:Partial<DbForm>)=>{setForm(value=>({...value,...patch}));setConnectionState("idle");setConnectionFingerprint("")};
+  const patchForm=(patch:Partial<DbForm>)=>{setForm(value=>({...value,...patch}));if(Object.keys(patch).some(key=>key!=="password"))setActiveCredentialId("");setConnectionState("idle");setConnectionFingerprint("")};
   const selectEnvironment=(next:Environment)=>{setEnvironment(next);patchForm({environment:next,tlsMode:next==="DEV"?"prefer":"require"});setProfileId("")};
   const selectEngine=(engine:string)=>{const defaults=adapterDefaults[engine];patchForm({engine,port:defaults.port,database:defaults.database,authMode:defaults.authMode,password:""});updateSqlText(sqlSamples[engine]||"SELECT *\nFROM table_name\nLIMIT 50;",engine);setCatalog([]);setProfileId("");setResult(null)};
   const applyDefaults=()=>{const defaults=adapterDefaults[form.engine];patchForm({port:defaults.port,database:defaults.database,authMode:defaults.authMode,tlsMode:environment==="DEV"?"prefer":"require",host:environment==="DEV"&&!form.host?"localhost":form.host==="localhost"&&environment!=="DEV"?"":form.host,password:""});notify(`${environment} ${defaults.name} defaults applied without secrets`)};
-  const applyProfile=(id:string)=>{setProfileId(id);const profile=profiles.find(item=>item.id===id);if(!profile)return;const {id:ignoredId,name:ignoredName,...profileData}=profile;setForm({...profileData,password:""});setEnvironment(profile.environment);setConnectionState("idle");setCatalog([]);notify(`${profile.name} autofilled; enter the password to connect`)};
-  const saveProfile=()=>{
-    if(!form.host&&!(["bigquery","databricks","hana"].includes(form.engine)))return notify("Enter the database host before saving a profile");
-    const name=(profileName||`${adapterDefaults[form.engine].name} · ${form.database||form.host||environment}`).trim();
-    const id=profileId||`profile-${Date.now().toString(36)}`; const profile:Profile={id,name,environment:form.environment,engine:form.engine,authMode:form.authMode,tlsMode:form.tlsMode,host:form.host,port:form.port,database:form.database,username:form.username};
-    const next=[profile,...profiles.filter(item=>item.id!==id)].slice(0,50);setProfiles(next);setProfileId(id);setProfileName("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));notify("Connection profile saved locally without the password");
+  const applyProfile=async(id:string)=>{
+    setProfileId(id);
+    const profile=profiles.find(item=>item.id===id);
+    if(!profile){setActiveCredentialId("");return}
+    const {id:ignoredId,name:ignoredName,...profileData}=profile;
+    const nextForm={...profileData,password:""};
+    setForm(nextForm);setEnvironment(profile.environment);setActiveCredentialId(id);setConnectionState("idle");setCatalog([]);
+    try{
+      const data=await agentCall("/api/credentials/session/status",{method:"POST",body:JSON.stringify({scope:"database",id})});
+      if(profile.authMode==="context"||data.credential?.available){notify(`${profile.name} selected; connecting to its workspace`);await connectToWorkspace(nextForm,profile.environment,id)}
+      else{openConnectionPanel();notify(`${profile.name} selected; enter its password once, then save or connect`)}
+    }catch(error){openConnectionPanel();notify(error instanceof Error?error.message:"Saved credential status is unavailable")}
   };
-  const deleteProfile=()=>{if(!profileId)return;const next=profiles.filter(item=>item.id!==profileId);setProfiles(next);setProfileId("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));notify("Saved profile deleted")};
-  const payload=()=>({environment,engine:form.engine,connection:{host:form.host.trim(),port:form.port.trim(),database:form.database.trim(),username:form.username.trim(),password:form.password,authMode:form.authMode,tlsMode:form.tlsMode}});
+  const saveProfile=async()=>{
+    if(!form.host&&!["bigquery","databricks","hana"].includes(form.engine))return notify("Enter the database host before saving a profile");
+    const name=(profileName||`${adapterDefaults[form.engine].name} · ${form.database||form.host||environment}`).trim();
+    const id=profileId||`profile-${Date.now().toString(36)}`;
+    const profile:Profile={id,name,environment:form.environment,engine:form.engine,authMode:form.authMode,tlsMode:form.tlsMode,host:form.host,port:form.port,database:form.database,username:form.username};
+    const remembered=rememberDbPassword&&form.authMode==="password"&&Boolean(form.password);
+    try{
+      if(remembered){await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id,username:form.username,password:form.password})});setForm(value=>({...value,password:""}))}
+      else if(!rememberDbPassword){await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id})})}
+    }catch(error){return notify(error instanceof Error?error.message:"Credential could not be remembered")}
+    const next=[profile,...profiles.filter(item=>item.id!==id)].slice(0,50);
+    setProfiles(next);setProfileId(id);setActiveCredentialId(id);setProfileName("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));
+    notify(remembered?"Profile saved; password remembered until the local agent stops":"Profile metadata saved without a persistent password");
+  };
+  const deleteProfile=async()=>{
+    if(!profileId)return;
+    try{await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id:profileId})})}catch{/* profile metadata can still be removed */}
+    const next=profiles.filter(item=>item.id!==profileId);
+    setProfiles(next);setProfileId("");setActiveCredentialId("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));notify("Saved profile and its session credential were deleted");
+  };
+  const payload=(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>({environment:targetEnvironment,engine:value.engine,connection:{host:value.host.trim(),port:value.port.trim(),database:value.database.trim(),username:value.username.trim(),password:value.password,credentialId:credentialId||undefined,authMode:value.authMode,tlsMode:value.tlsMode}});
 
-  const loadCatalog=async(silent=false)=>{
+  const loadCatalog=async(silent=false,value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
     setCatalogLoading(true);
-    try{const data=await agentCall("/api/sql/catalog",{method:"POST",body:JSON.stringify({...payload(),timeoutMs:45000})});setCatalog(data.objects||[]);if(!silent)notify(`${(data.objects||[]).length} database objects loaded`)}
+    try{const data=await agentCall("/api/sql/catalog",{method:"POST",body:JSON.stringify({...payload(value,targetEnvironment,credentialId),timeoutMs:45000})});setCatalog(data.objects||[]);if(!silent)notify(`${(data.objects||[]).length} database objects loaded`)}
     catch(error){if(!silent)notify(error instanceof Error?error.message:"Catalog load failed")}
     finally{setCatalogLoading(false)}
   };
-  const connect=async(loadObjects=true)=>{
+  const connect=async(loadObjects=true,value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
     if(agentState!=="online"){notify("Start the local database agent before connecting");return false}
     setConnectionState("connecting");setConnectionMessage("Validating driver, network, TLS, identity, and permissions…");
-    try{const data=await agentCall("/api/connections/check",{method:"POST",body:JSON.stringify({...payload(),timeoutMs:30000})});setConnectionState("connected");setConnectionFingerprint(fingerprint());setConnectionMessage(`${data.adapter?.name||adapterDefaults[form.engine].name} ready · ${data.durationMs} ms · ${data.access} access`);notify("Database connection validated");if(loadObjects)await loadCatalog(true);return true}
-    catch(error){const message=error instanceof Error?error.message:"Connection failed";setConnectionState("failed");setConnectionMessage(message);notify(message);return false}
+    try{
+      const data=await agentCall("/api/connections/check",{method:"POST",body:JSON.stringify({...payload(value,targetEnvironment,credentialId),timeoutMs:30000})});
+      setConnectionState("connected");setConnectionFingerprint(fingerprint(value,credentialId));setConnectionMessage(`${data.adapter?.name||adapterDefaults[value.engine].name} ready · ${data.durationMs} ms · ${data.access} access`);notify("Database connection validated");
+      if(loadObjects)await loadCatalog(true,value,targetEnvironment,credentialId);
+      return true
+    }catch(error){const message=error instanceof Error?error.message:"Connection failed";setConnectionState("failed");setConnectionMessage(message);notify(message);return false}
   };
-  const connectToWorkspace=async()=>{
-    const destination:StudioTool=form.engine==="mongodb"?"mongodb":"sql";
+  const connectToWorkspace=async(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
+    const destination:StudioTool=value.engine==="mongodb"?"mongodb":"sql";
     setStudioTool(destination);
-    const connected=await connect(true);
+    if(credentialId&&value.authMode==="password"){
+      try{
+        if(rememberDbPassword&&value.password)await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id:credentialId,username:value.username,password:value.password})});
+        else if(!rememberDbPassword)await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id:credentialId})});
+      }catch(error){return notify(error instanceof Error?error.message:"Credential memory could not be updated")}
+    }
+    const connected=await connect(true,value,targetEnvironment,credentialId);
     if(!connected){openConnectionPanel();return}
+    if(credentialId&&value.password)setForm(current=>({...current,password:""}));
     setConnectionPanelOpen(false);
     if(destination==="sql")requestAnimationFrame(()=>editorRef.current?.focus());
-    notify(`${adapterDefaults[form.engine].name} connected; ${destination==="sql"?"SQL Workspace":"MongoDB Studio"} ready`);
-  };
-  const runSql=async(mode:"selected"|"all"|"explain"="selected",overrideSql="")=>{
+    notify(`${adapterDefaults[value.engine].name} connected; ${destination==="sql"?"SQL Workspace":"MongoDB Studio"} ready`);
+  };  const runSql=async(mode:"selected"|"all"|"explain"="selected",overrideSql="")=>{
     let statement=(overrideSql.trim()||(mode==="all"?sql.trim():selectedStatement())).replace(/\s+$/,"");
     if(!statement)return notify("Enter a SQL statement first");
     if(mode==="explain"){
@@ -717,14 +758,20 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
     try{parsed=new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)?raw:`https://${raw}`)}catch{return notify("Enter a valid DevOps URL")}
     if(parsed.password||[...parsed.searchParams.keys()].some(key=>/(password|passwd|secret|token|api[-_]?key|private[-_]?key)/i.test(key)))return notify("Credential values are blocked in DevOps URLs");
     const protocol=parsed.protocol.toLowerCase();
+    if(protocol!=="ssh:"&&(devopsUsername.trim()||devopsPassword))return notify("Username and password fields are for SSH only; GitHub, Kubernetes, and Docker use their approved local CLI contexts");
     if(parsed.hostname.toLowerCase()==="github.com"){
       const [owner,repository]=parsed.pathname.split("/").filter(Boolean);
       if(!owner||!repository)return notify("Use a GitHub repository URL such as https://github.com/owner/repository");
       setDevopsMode("github");setGitSource("github");setGitView("overview");setGitRepository(`${owner}/${repository.replace(/\.git$/i,"")}`);setDevopsData(null);setDevopsUrl("");notify("GitHub URL passed to Git & GitHub");return;
     }
     if(protocol==="ssh:"){
-      if(!parsed.hostname||!parsed.username)return notify("SSH URLs must include a username and host, for example ssh://user@host:22");
-      setDevopsMode("ssh");setDevopsData(null);setSshConnectionRequest({url:parsed.toString(),requestId:Date.now()});setDevopsUrl("");notify("SSH URL passed to a new terminal profile");return;
+      const username=(devopsUsername.trim()||decodeURIComponent(parsed.username)).trim();
+      if(!parsed.hostname||!username)return notify("Enter an SSH username and an ssh:// hostname or IP");
+      setDevopsMode("ssh");setDevopsData(null);
+      setSshConnectionRequest({url:parsed.toString(),requestId:Date.now(),username,password:devopsPassword,remember:rememberDevopsPassword,autoConnect:true});
+      setDevopsUrl("");setDevopsUsername("");setDevopsPassword("");
+      notify("SSH target passed; inspecting its host key and connecting");
+      return;
     }
     if(protocol==="kubernetes:"||protocol==="k8s:"){
       const context=parsed.hostname||parsed.pathname.split("/").filter(Boolean)[0]||"";
@@ -739,8 +786,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
       setDevopsMode("docker");setDockerTarget(target);setDockerView("logs");setDevopsData(null);setDevopsUrl("");notify("Docker URL passed to Logs & inspect");return;
     }
     notify("Supported DevOps URLs: GitHub, ssh://, kubernetes://, k8s://, and docker://");
-  };
-  const compareToolVersions=async(save=false)=>{
+  };  const compareToolVersions=async(save=false)=>{
     setDevopsBusy(true);setDevopsData(null);
     try{const data=await agentCall("/api/devops/"+(save?"version-baseline":"version-comparison"),save?{method:"POST",body:"{}"}:{});setDevopsData(data);notify(save?"DevOps version baseline saved":"Tool versions compared")}
     catch(error){const message=error instanceof Error?error.message:"Version comparison failed";setDevopsData({ok:false,error:message});notify(message)}
@@ -947,15 +993,15 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
               <div className="connector-form">
                 <label>ADAPTER<select value={form.engine} onChange={event=>selectEngine(event.target.value)}>{engineOrder.map(engine=><option key={engine} value={engine}>{adapters[engine]?.name||adapterDefaults[engine].name}</option>)}</select></label>
                 <label>SAVED PROFILE<select value={profileId} onChange={event=>applyProfile(event.target.value)}><option value="">Select profile…</option>{scopedProfiles.map(profile=><option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
-                <div className="profile-actions"><input aria-label="Profile name" value={profileName} onChange={event=>setProfileName(event.target.value)} placeholder="Profile name (optional)"/><button onClick={saveProfile}>Save</button><button onClick={deleteProfile} disabled={!profileId}>Delete</button></div>
-                <div className="autofill-row"><button onClick={applyDefaults}>Autofill adapter defaults</button><span>Password excluded</span></div>
+                <div className="profile-actions"><input aria-label="Profile name" value={profileName} onChange={event=>setProfileName(event.target.value)} placeholder="Profile name (optional)"/><button onClick={saveProfile}>Save profile</button><button onClick={deleteProfile} disabled={!profileId}>Delete</button></div>
+                <div className="autofill-row"><button onClick={applyDefaults}>Autofill adapter defaults</button><span>Secrets stay in agent memory</span></div>
                 <label>AUTHENTICATION<select value={form.authMode} onChange={event=>patchForm({authMode:event.target.value as DbForm["authMode"],password:""})}><option value="password">Username + password</option><option value="context">Existing CLI / integrated context</option></select></label>
                 <label>TLS POLICY<select value={form.tlsMode} onChange={event=>patchForm({tlsMode:event.target.value as DbForm["tlsMode"]})}><option value="require">Require trusted TLS</option><option value="prefer">Driver default / prefer TLS</option><option value="disable">Disable TLS (approved internal)</option></select></label>
                 <div className="field-pair"><label>HOST<input value={form.host} onChange={event=>patchForm({host:event.target.value})} placeholder={form.engine==="snowflake"?"account identifier":"db.company.net"}/></label><label>PORT<input value={form.port} onChange={event=>patchForm({port:event.target.value})}/></label></div>
                 <label>DATABASE / SERVICE<input value={form.database} onChange={event=>patchForm({database:event.target.value})} placeholder="Database, service, project, or warehouse"/></label>
                 <label>USERNAME / PROFILE<input autoComplete="username" value={form.username} onChange={event=>patchForm({username:event.target.value})}/></label>
-                {form.authMode==="password"&&<label>PASSWORD<input type="password" autoComplete="current-password" value={form.password} onChange={event=>patchForm({password:event.target.value})} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();connectToWorkspace()}}}/></label>}
-                <div className="connector-buttons"><button className="secondary" onClick={applyDefaults}>Reset defaults</button><button className="primary" onClick={connectToWorkspace} disabled={connectionState==="connecting"}>{connectionState==="connecting"?"Validating…":form.engine==="mongodb"?"Connect → MongoDB Studio":"Connect → SQL Workspace"}</button></div>
+                {form.authMode==="password"&&<><label>PASSWORD<input type="password" autoComplete="current-password" value={form.password} onChange={event=>patchForm({password:event.target.value})} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();connectToWorkspace()}}}/></label><label className="credential-session-toggle"><input type="checkbox" checked={rememberDbPassword} onChange={event=>setRememberDbPassword(event.target.checked)}/><span><b>Remember until agent stops</b><small>Stored only in volatile local-agent memory; never in the browser profile.</small></span></label></>}
+                <div className="connector-buttons"><button className="secondary" onClick={applyDefaults}>Reset defaults</button><button className="primary" onClick={()=>connectToWorkspace()} disabled={connectionState==="connecting"}>{connectionState==="connecting"?"Validating…":form.engine==="mongodb"?"Connect → MongoDB Studio":"Connect → SQL Workspace"}</button></div>
                 <div className={`connection-message ${connectionState}`}><i/><span><b>{activeAdapter?.name||adapterDefaults[form.engine].name}</b><small>{connectionMessage}</small></span></div>
                 <div className="capability-list"><span>{activeAdapter?.directAvailable?"Bundled direct driver":activeAdapter?.clientAvailable?"Approved local client":"Client readiness pending"}</span><span>Catalog browser</span><span>SQL + diagnostics</span><span>Environment autofill</span></div>
               </div>
@@ -1062,7 +1108,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
               <header className="module-head"><div><i>DO</i><p><b>DevOps & Remote Operations</b><small>Visual Kubernetes, Docker, Git/GitHub, Ansible, delivery evidence and verified SSH</small></p></div><span>{Object.values(toolInventory).filter(tool=>tool.available).length}/{Object.keys(toolInventory).length||20} tools ready</span></header>
               <nav className="module-tabs devops-tabs">{(["kubernetes","docker","github","ansible","tooling","delivery","ssh","changes"] as DevopsMode[]).map(mode=><button key={mode} className={devopsMode===mode?"active":""} onClick={()=>{setDevopsMode(mode);setDevopsData(null);setDevopsSearch("")}}>{mode==="kubernetes"?"Kubernetes GUI":mode==="docker"?"Docker GUI":mode==="github"?"Git & GitHub":mode==="ansible"?"Ansible GUI":mode==="tooling"?"Toolbox":mode==="delivery"?"Delivery & Kafka":mode==="ssh"?"SSH terminals":"Controlled changes"}</button>)}</nav>
               <div className="module-controls devops-controls">
-                <div className="devops-url-pass"><label>DEVOPS URL / DEEP LINK<input value={devopsUrl} onChange={event=>setDevopsUrl(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();passDevopsUrl()}}} placeholder="GitHub · ssh://user@host:22 · kubernetes://context/namespace · docker://container"/></label><button className="secondary" onClick={passDevopsUrl}>Pass URL</button><small>Routes the URL to the matching workspace. Credentials in URLs are blocked.</small></div>
+                <div className="devops-url-pass"><label className="devops-url-field">DEVOPS URL / DEEP LINK<input value={devopsUrl} onChange={event=>setDevopsUrl(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();passDevopsUrl()}}} placeholder="ssh://host:22 · GitHub · kubernetes://context/namespace · docker://container"/></label><label>SSH USERNAME<input autoComplete="username" value={devopsUsername} onChange={event=>setDevopsUsername(event.target.value)} placeholder="opsuser"/></label><label>SSH PASSWORD<input type="password" autoComplete="current-password" value={devopsPassword} onChange={event=>setDevopsPassword(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();passDevopsUrl()}}}/></label><label className="devops-remember"><input type="checkbox" checked={rememberDevopsPassword} onChange={event=>setRememberDevopsPassword(event.target.checked)}/><span>Remember this agent session</span></label><button className="secondary" onClick={passDevopsUrl}>Pass & connect</button><small>SSH uses the username/password fields and connects after host-key verification. GitHub, Kubernetes, and Docker use approved local CLI contexts. Credentials inside URLs are blocked.</small></div>
                 {devopsMode==="kubernetes"&&<><div className="double-fields"><label>KUBE CONTEXT<input value={kubeContext} onChange={event=>setKubeContext(event.target.value)} placeholder="Current context when empty"/></label><label>NAMESPACE<input value={kubeNamespace} onChange={event=>setKubeNamespace(event.target.value)} placeholder="default"/></label></div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(["overview","workloads","compute","network","events"] as KubeGuiView[]).map(view=><button key={view} className={kubeView===view?"active":""} onClick={()=>setKubeView(view)}>{view}</button>)}</nav><label>SEARCH RESOURCES<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="pod, node, warning…"/></label></div><p>A Lens-style resource explorer for cluster health, workloads, services, metrics, and warning events.</p></>}
                 {devopsMode==="docker"&&<><div className="double-fields"><label>CONTAINER FOR DETAILS<input value={dockerTarget} onChange={event=>setDockerTarget(event.target.value)} placeholder="Required only for Logs & inspect"/></label><label>SEARCH RESOURCES<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="container, image, port…"/></label></div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(["overview","containers","images","storage","network","logs"] as DockerGuiView[]).map(view=><button key={view} className={dockerView===view?"active":""} onClick={()=>setDockerView(view)}>{view==="logs"?"Logs & inspect":view}</button>)}</nav></div><p>Docker Desktop-style visibility for containers, images, volumes, networks, capacity, stats, logs, inspect data, and processes.</p></>}
                 {devopsMode==="github"&&<><div className="double-fields"><label>WORKSPACE SOURCE<select value={gitSource} onChange={event=>{setGitSource(event.target.value as "github"|"git");setGitView("overview");setDevopsData(null)}}><option value="github">GitHub cloud via gh</option><option value="git">Local Git working tree</option></select></label>{gitSource==="github"?<label>GITHUB REPOSITORY<input value={gitRepository} onChange={event=>setGitRepository(event.target.value)} placeholder="owner/repository (optional)"/></label>:<label>WORKING FOLDER<input value={gitCwd} onChange={event=>setGitCwd(event.target.value)} placeholder="C:\work\repository"/></label>}</div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(gitSource==="github"?["overview","repositories","pullRequests","workflows","issues"]:["overview","status","branches","commits","diff"]).map(view=><button key={view} className={gitView===view?"active":""} onClick={()=>setGitView(view as GitGuiView)}>{view.replace(/([A-Z])/g," $1")}</button>)}</nav><label>SEARCH GIT EVIDENCE<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="branch, author, PR…"/></label></div><p>A GitKraken-inspired operations workspace for local history plus authenticated GitHub repositories, PRs, issues, and workflow runs.</p></>}
@@ -1073,7 +1119,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
                 {devopsMode==="changes"&&<><div className="double-fields"><label>PLATFORM<select value={changePlatform} onChange={event=>{const platform=event.target.value as "kubernetes"|"docker";setChangePlatform(platform);setChangeAction(platform==="kubernetes"?"restartDeployment":"restartContainer")}}><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option></select></label><label>ACTION<select value={changeAction} onChange={event=>setChangeAction(event.target.value)}>{(changePlatform==="kubernetes"?["restartDeployment","scaleDeployment","deletePod"]:["startContainer","stopContainer","restartContainer","pauseContainer","unpauseContainer"]).map(action=><option key={action}>{action}</option>)}</select></label></div><div className="triple-fields"><label>TARGET<input value={changeTarget} onChange={event=>setChangeTarget(event.target.value)} placeholder={changePlatform==="kubernetes"?"deployment or pod":"container"}/></label><label>REPLICAS<input value={changeValue} onChange={event=>setChangeValue(event.target.value)} disabled={changeAction!=="scaleDeployment"}/></label><label>CHANGE / INCIDENT REFERENCE<input value={changeReference} onChange={event=>setChangeReference(event.target.value)} placeholder="CHG-12345"/></label></div><div className="change-actions"><button className="secondary" onClick={()=>runContainerChange(true)} disabled={devopsBusy}>Preview permission</button><button className="secondary" onClick={loadContainerAudit} disabled={devopsBusy}>Audit history</button><button className="danger-action" onClick={()=>runContainerChange(false)} disabled={devopsBusy}>Apply audited change</button></div><small className="safety-note">Changes require read-write mode, an explicit confirmation, permission preflight, and an audit record. Kubernetes also uses the context and namespace above.</small></>}
                 {(["kubernetes","docker","github","ansible","tooling"] as DevopsMode[]).includes(devopsMode)&&<button className="primary refresh-visual" onClick={runDevops} disabled={devopsBusy}>{devopsBusy?"Refreshing…":devopsMode==="tooling"?"Run inspection":"Refresh visual workspace"}</button>}
               </div>
-              <section className="module-body devops-body">{devopsMode==="ssh"?<SshWorkspace environment={environment} agentToken={agentToken} agentCall={agentCall} notify={notify} connectionRequest={sshConnectionRequest}/>:(["kubernetes","docker","github","ansible"] as DevopsMode[]).includes(devopsMode)?<DevopsVisualWorkspace kind={(devopsMode==="github"?gitSource:devopsMode) as "kubernetes"|"docker"|"github"|"git"|"ansible"} activeView={devopsMode==="kubernetes"?kubeView:devopsMode==="docker"?dockerView:devopsMode==="github"?gitView:ansibleView} data={devopsData} search={devopsSearch} available={toolInventory[devopsMode==="github"?gitSource:devopsMode]?.available===true}/>:<>
+              <section className="module-body devops-body">{devopsMode==="ssh"?<SshWorkspace environment={environment} agentToken={agentToken} agentCall={agentCall} notify={notify} connectionRequest={sshConnectionRequest} consumeConnectionRequest={()=>setSshConnectionRequest(null)}/>:(["kubernetes","docker","github","ansible"] as DevopsMode[]).includes(devopsMode)?<DevopsVisualWorkspace kind={(devopsMode==="github"?gitSource:devopsMode) as "kubernetes"|"docker"|"github"|"git"|"ansible"} activeView={devopsMode==="kubernetes"?kubeView:devopsMode==="docker"?dockerView:devopsMode==="github"?gitView:ansibleView} data={devopsData} search={devopsSearch} available={toolInventory[devopsMode==="github"?gitSource:devopsMode]?.available===true}/>:<>
                 <div className="tool-inventory">{Object.entries(toolInventory).map(([id,tool])=><article key={id} className={tool.available?"ready":"missing"}><i/><span><b>{id}</b><small>{tool.version}</small></span></article>)}</div>
                 {!devopsData&&<div className="module-empty"><span>OPS</span><b>Safe operations from one shared context</b><small>All commands are built from server-side allowlists. Free-form shell execution is not exposed.</small></div>}
                 {devopsData&&<div className="evidence-view">

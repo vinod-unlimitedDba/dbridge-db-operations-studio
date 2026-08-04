@@ -18,11 +18,11 @@ type Profile = { id:string; name:string; environment:string; host:string; port:s
 type Snippet = { id:string; name:string; command:string };
 type SftpEntry = { name:string; longname:string; type:"directory"|"file"|"symlink"; size:number; modifiedAt:string|null; permissions:string };
 type Settings = { fontSize:number; theme:"midnight"|"forest"|"light"; keepaliveSeconds:number; cols:number; rows:number; toolsPinned:boolean };
-type ConnectionRequest = { url:string; requestId:number };
+type ConnectionRequest = { url:string; requestId:number; username:string; password:string; remember:boolean; autoConnect:boolean };
 type PreflightEvidence = { error?:string; host?:string; port?:number; fingerprint?:string; keyType?:string; hostKeys?:HostKey[]; trustStatus?:"new"|"trusted"|"changed"; trusted?:boolean; requiresTrust?:boolean; previousFingerprint?:string; firstSeenAt?:string; credentialSent?:boolean };
 type ApiResult = Partial<SessionDescriptor> & {
   target?:PreflightEvidence; sessions?:SessionDescriptor[]; path?:string; entries?:SftpEntry[];
-  file?:{path:string;size:number;data:string}; forward?:Forward; forwards?:Forward[];
+  file?:{path:string;size:number;data:string}; forward?:Forward; forwards?:Forward[]; credential?:{available?:boolean};
 };
 type AgentCall = (path:string, init?:RequestInit)=>Promise<ApiResult>;
 type FitAddonLike = { fit:()=>void };
@@ -90,6 +90,7 @@ function TerminalPane({session,fontSize,theme,onInput,onResize,onFocus}:{session
 function cleanPathJoin(parent:string,name:string){return parent==="."?name:`${parent.replace(/\/$/,"")}/${name}`}
 function parentPath(path:string){if(path==="."||path==="/")return path;const clean=path.replace(/\/$/,"");const index=clean.lastIndexOf("/");return index<=0?(clean.startsWith("/")?"/":"."):clean.slice(0,index)}
 function safeFilename(value:string){return value.replace(/[\\/:*?"<>|\0-\x1f]/g,"_").slice(0,120)||"terminal.log"}
+function sessionCredentialId(host:string,port:string,username:string){return ("ssh-"+username+"-"+host+"-"+port).replace(/[^A-Za-z0-9_.:@-]/g,"-").slice(0,128)}
 function errorName(error:unknown){return typeof error==="object"&&error!==null&&"name" in error?String(error.name):""}
 function errorMessage(error:unknown){return error instanceof Error?error.message:String(error)}
 function openedSession(result:ApiResult):SessionDescriptor{
@@ -97,9 +98,9 @@ function openedSession(result:ApiResult):SessionDescriptor{
   return{sessionId:result.sessionId,host:result.host,port:result.port,username:result.username,authMethod:result.authMethod,openedAt:result.openedAt,lastActivity:result.lastActivity,keepaliveSeconds:result.keepaliveSeconds,hostKeys:result.hostKeys,verifiedHostKey:result.verifiedHostKey,forwards:result.forwards||[]};
 }
 
-export default function SshWorkspace({environment,agentToken,agentCall,notify,connectionRequest}:{environment:string;agentToken:string;agentCall:AgentCall;notify:(message:string)=>void;connectionRequest?:ConnectionRequest|null}){
+export default function SshWorkspace({environment,agentToken,agentCall,notify,connectionRequest,consumeConnectionRequest}:{environment:string;agentToken:string;agentCall:AgentCall;notify:(message:string)=>void;connectionRequest?:ConnectionRequest|null;consumeConnectionRequest:()=>void}){
   const [form,setForm]=useState({name:"",host:"",port:"22",username:"",authMethod:"agent" as AuthMethod,keyPath:"",password:"",passphrase:""});
-  const [profiles,setProfiles]=useState<Profile[]>([]);const [selectedProfile,setSelectedProfile]=useState("");
+  const [profiles,setProfiles]=useState<Profile[]>([]);const [selectedProfile,setSelectedProfile]=useState("");const [rememberCredential,setRememberCredential]=useState(true);
   const [sessions,setSessions]=useState<Session[]>([]);const [activeId,setActiveId]=useState("");const [secondaryId,setSecondaryId]=useState("");
   const [split,setSplit]=useState<SplitMode>("none");const [panel,setPanel]=useState<ToolPanel|null>(null);const [connectionOpen,setConnectionOpen]=useState(false);const [busy,setBusy]=useState(false);
   const [broadcast,setBroadcast]=useState(false);const [search,setSearch]=useState("");const [evidence,setEvidence]=useState<PreflightEvidence|null>(null);
@@ -126,13 +127,29 @@ export default function SshWorkspace({environment,agentToken,agentCall,notify,co
   useEffect(()=>{localStorage.setItem(SNIPPET_KEY,JSON.stringify(snippets))},[snippets]);
   useEffect(()=>{
     if(!connectionRequest?.url)return;
-    try{
-      const target=new URL(connectionRequest.url);
-      if(target.protocol!=="ssh:"||!target.hostname||!target.username)return;
-      const username=decodeURIComponent(target.username);
-      setForm(value=>({...value,name:`${username}@${target.hostname}`,host:target.hostname,port:target.port||"22",username,authMethod:"agent",keyPath:"",password:"",passphrase:""}));
-      setSelectedProfile("");setEvidence(null);setPanel(null);setConnectionOpen(true);
-    }catch{/* parent validates the URL before passing it */}
+    const request=connectionRequest;
+    consumeConnectionRequest();
+    void (async()=>{
+      try{
+        const target=new URL(request.url);
+        if(target.protocol!=="ssh:"||!target.hostname)return;
+        const username=(request.username||decodeURIComponent(target.username)).trim();
+        if(!username)return;
+        const port=target.port||"22";
+        const credentialId=sessionCredentialId(target.hostname,port,username);
+        const authMethod:AuthMethod=request.password?"password":"agent";
+        const nextForm={name:`${username}@${target.hostname}`,host:target.hostname,port,username,authMethod,keyPath:"",password:request.password,passphrase:""};
+        const useCredential=Boolean(request.remember&&request.password);
+        setForm(nextForm);setEvidence(null);setPanel(null);setConnectionOpen(!request.autoConnect);setRememberCredential(request.remember);
+        if(request.remember){
+          const profile:Profile={id:credentialId,name:nextForm.name,environment,host:nextForm.host,port:nextForm.port,username:nextForm.username,authMethod};
+          setProfiles(items=>[...items.filter(item=>item.id!==profile.id),profile]);
+          setSelectedProfile(credentialId);
+          if(useCredential)await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"ssh",id:credentialId,username,password:request.password})});
+        }else{setSelectedProfile("");await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:credentialId})}).catch(()=>{/* one-time connection remains usable */})}
+        if(request.autoConnect)await connect(nextForm,useCredential?credentialId:"");
+      }catch(error){setConnectionOpen(true);notify(error instanceof Error?error.message:"SSH target could not be connected")}
+    })();
   },[connectionRequest?.requestId]);
 
   const appendOutput=(sessionId:string,value:string,connected?:boolean)=>setSessions(items=>items.map(item=>item.sessionId===sessionId?{...item,output:(item.output+value).slice(-260000),connected:connected??item.connected,unread:activeRef.current!==sessionId||item.unread}:item));
@@ -158,30 +175,30 @@ export default function SshWorkspace({environment,agentToken,agentCall,notify,co
     return()=>{cancelled=true;Object.values(liveControllers).forEach(controller=>controller.abort())};
   },[agentToken]);
 
-  const payload=(includeSecrets=true)=>({environment,host:form.host.trim(),port:form.port,username:form.username.trim(),authMethod:form.authMethod,privateKeyPath:form.keyPath.trim(),keepaliveSeconds:settings.keepaliveSeconds,cols:settings.cols,rows:settings.rows,...(includeSecrets?{password:form.password,passphrase:form.passphrase}:{})});
-  const inspectHost=async()=>{
-    const data=await agentCall("/api/terminal/ssh/preflight",{method:"POST",body:JSON.stringify(payload(false))});
+  const payload=(includeSecrets=true,value=form,credentialId=selectedProfile)=>({environment,host:value.host.trim(),port:value.port,username:value.username.trim(),authMethod:value.authMethod,privateKeyPath:value.keyPath.trim(),credentialId:credentialId||undefined,keepaliveSeconds:settings.keepaliveSeconds,cols:settings.cols,rows:settings.rows,...(includeSecrets?{password:value.password,passphrase:value.passphrase}:{})});
+  const inspectHost=async(value=form)=>{
+    const data=await agentCall("/api/terminal/ssh/preflight",{method:"POST",body:JSON.stringify(payload(false,value,""))});
     if(!data.target?.fingerprint||!data.target.trustStatus)throw new Error("The SSH server did not present a usable host key");
     setEvidence(data.target);
     return data.target;
   };
   const preflight=async()=>{setBusy(true);try{const inspected=await inspectHost();notify(inspected.trustStatus==="trusted"?"Pinned SSH host key matched":inspected.trustStatus==="new"?"New SSH host key is ready for approval":"SSH host key change detected and blocked")}catch(error){setEvidence({error:error instanceof Error?error.message:"Host-key inspection failed"});notify(error instanceof Error?error.message:"Host-key inspection failed")}finally{setBusy(false)}};
-  const connect=async()=>{
+  const connect=async(value=form,credentialId=selectedProfile)=>{
     if(sessions.filter(item=>item.connected).length>=8)return notify("Close a terminal before opening more than eight sessions");
     setBusy(true);
     try{
-      const inspected=await inspectHost();
+      if(credentialId&&!rememberCredential)await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:credentialId})});
+      const inspected=await inspectHost(value);
       if(inspected.trustStatus==="changed")throw new Error("SSH host key changed. Forget the old pin only after verifying the server was intentionally rebuilt or re-keyed.");
       const trustHostKey=inspected.trustStatus==="new";
       if(trustHostKey&&!window.confirm(`First connection to ${inspected.host}:${inspected.port}.\n\nTrust and pin this host key?\n${inspected.keyType}\n${inspected.fingerprint}\n\nNo credential has been sent yet.`)){notify("Connection cancelled before authentication");return}
-      const opened=openedSession(await agentCall("/api/terminal/ssh/open",{method:"POST",body:JSON.stringify({...payload(true),trustHostKey,hostFingerprint:inspected.fingerprint,hostKeyType:inspected.keyType})}));
-      const session:Session={...opened,environment,label:form.name.trim()||`${opened.username}@${opened.host}`,output:`\x1b[32mConnected to ${opened.username}@${opened.host}:${opened.port}\x1b[0m\r\n`,connected:true,unread:false,forwards:opened.forwards||[]};
-      setSessions(items=>[...items,session]);setActiveId(session.sessionId);setConnectionOpen(false);setPanel(null);setForm(value=>({...value,password:"",passphrase:""}));
+      const opened=openedSession(await agentCall("/api/terminal/ssh/open",{method:"POST",body:JSON.stringify({...payload(true,value,credentialId),trustHostKey,hostFingerprint:inspected.fingerprint,hostKeyType:inspected.keyType})}));
+      const session:Session={...opened,environment,label:value.name.trim()||`${opened.username}@${opened.host}`,output:`\x1b[32mConnected to ${opened.username}@${opened.host}:${opened.port}\x1b[0m\r\n`,connected:true,unread:false,forwards:opened.forwards||[]};
+      setSessions(items=>[...items,session]);setActiveId(session.sessionId);setConnectionOpen(false);setPanel(null);setForm(current=>({...current,password:"",passphrase:""}));
       consumeStream(session.sessionId).catch(error=>{if(errorName(error)!=="AbortError")appendOutput(session.sessionId,`\r\n[stream error] ${errorMessage(error)}\r\n`,false)});
       notify(trustHostKey?"SSH host key pinned and terminal connected":"Pinned host key matched; terminal connected");
     }catch(error){notify(error instanceof Error?error.message:"SSH connection failed")}finally{setBusy(false)}
-  };
-  const forgetHostTrust=async()=>{
+  };async()=>{
     if(!evidence?.host||!evidence.port)return;
     const expected=`FORGET ${evidence.host}:${evidence.port}`;const confirmation=window.prompt(`To forget the pinned key, type:\n${expected}`);
     if(confirmation===null)return;
@@ -191,10 +208,34 @@ export default function SshWorkspace({environment,agentToken,agentCall,notify,co
   const queueInput=(sessionId:string,data:string)=>{queues.current[sessionId]=(queues.current[sessionId]||"")+data;if(queueTimers.current[sessionId])return;queueTimers.current[sessionId]=window.setTimeout(()=>{const value=queues.current[sessionId]||"";queues.current[sessionId]="";delete queueTimers.current[sessionId];agentCall("/api/terminal/ssh/input",{method:"POST",body:JSON.stringify({sessionId,data:value})}).catch(error=>notify(error instanceof Error?error.message:"SSH input failed"))},18)};
   const sendInput=(sessionId:string,data:string)=>{const returns=(data.match(/[\r\n]/g)||[]).length;if(returns>1&&!window.confirm(`Paste ${returns} command lines into the remote terminal?`))return;const targets=broadcast?sessions.filter(item=>item.connected).map(item=>item.sessionId):[sessionId];targets.forEach(id=>queueInput(id,data))};
   const resizeTerminal=(sessionId:string,cols:number,rows:number)=>{agentCall("/api/terminal/ssh/resize",{method:"POST",body:JSON.stringify({sessionId,cols,rows})}).catch(()=>{/* next fit retries */})};
-  const applyProfile=(id:string)=>{setSelectedProfile(id);const profile=profiles.find(item=>item.id===id);if(profile)setForm(value=>({...value,name:profile.name,host:profile.host,port:profile.port,username:profile.username,authMethod:profile.authMethod,password:"",passphrase:"",keyPath:""}))};
-  const saveProfile=()=>{if(!form.name.trim()||!form.host.trim()||!form.username.trim())return notify("Profile name, host, and username are required");const profile:Profile={id:selectedProfile||crypto.randomUUID(),name:form.name.trim(),environment,host:form.host.trim(),port:form.port,username:form.username.trim(),authMethod:form.authMethod};setProfiles(items=>[...items.filter(item=>item.id!==profile.id),profile]);setSelectedProfile(profile.id);notify("Profile metadata saved locally; no credential was stored")};
-  const deleteProfile=()=>{if(!selectedProfile)return;setProfiles(items=>items.filter(item=>item.id!==selectedProfile));setSelectedProfile("");notify("SSH profile deleted")};
-  const copySessionToForm=(session:Session)=>{setForm(value=>({...value,name:session.label,host:session.host,port:String(session.port),username:session.username,authMethod:session.authMethod,password:"",passphrase:"",keyPath:""}));openConnection();notify(session.authMethod==="agent"?"Connection copied; choose Connect when ready":"Connection copied; re-enter its credential to reconnect")};
+  const applyProfile=async(id:string)=>{
+    setSelectedProfile(id);
+    const profile=profiles.find(item=>item.id===id);
+    if(!profile)return;
+    const nextForm={name:profile.name,host:profile.host,port:profile.port,username:profile.username,authMethod:profile.authMethod,password:"",passphrase:"",keyPath:""};
+    setForm(nextForm);setEvidence(null);
+    try{
+      const data=await agentCall("/api/credentials/session/status",{method:"POST",body:JSON.stringify({scope:"ssh",id})});
+      if(profile.authMethod==="agent"||(profile.authMethod==="password"&&data.credential?.available)){notify(`${profile.name} selected; connecting now`);await connect(nextForm,id)}
+      else{openConnection();notify(profile.authMethod==="key"?"Enter the private-key path to connect":"Enter the password once, then save or connect")}
+    }catch(error){openConnection();notify(error instanceof Error?error.message:"Saved credential status is unavailable")}
+  };
+  const saveProfile=async()=>{
+    if(!form.name.trim()||!form.host.trim()||!form.username.trim())return notify("Profile name, host, and username are required");
+    const profile:Profile={id:selectedProfile||crypto.randomUUID(),name:form.name.trim(),environment,host:form.host.trim(),port:form.port,username:form.username.trim(),authMethod:form.authMethod};
+    const remembered=rememberCredential&&Boolean(form.password||form.passphrase);
+    try{
+      if(remembered){await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"ssh",id:profile.id,username:form.username,password:form.password,passphrase:form.passphrase})});setForm(value=>({...value,password:"",passphrase:""}))}
+      else if(!rememberCredential){await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:profile.id})})}
+    }catch(error){return notify(error instanceof Error?error.message:"SSH credential could not be remembered")}
+    setProfiles(items=>[...items.filter(item=>item.id!==profile.id),profile]);setSelectedProfile(profile.id);
+    notify(remembered?"SSH profile saved; credential remembered until the local agent stops":"SSH profile metadata saved without a persistent credential");
+  };
+  const deleteProfile=async()=>{
+    if(!selectedProfile)return;
+    try{await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:selectedProfile})})}catch{/* profile metadata can still be removed */}
+    setProfiles(items=>items.filter(item=>item.id!==selectedProfile));setSelectedProfile("");notify("SSH profile and its session credential were deleted");
+  };(session:Session)=>{setSelectedProfile("");setForm(value=>({...value,name:session.label,host:session.host,port:String(session.port),username:session.username,authMethod:session.authMethod,password:"",passphrase:"",keyPath:""}));openConnection();notify(session.authMethod==="agent"?"Connection copied; choose Connect when ready":"Connection copied; re-enter its credential to reconnect")};
   const cycleSplit=()=>{if(sessions.length<2)return notify("Open another terminal tab before splitting");const other=sessions.find(item=>item.sessionId!==activeId);setSecondaryId(other?.sessionId||"");setSplit(value=>value==="none"?"vertical":value==="vertical"?"horizontal":"none")};
   const copyOutput=()=>{if(active)navigator.clipboard.writeText(active.output).then(()=>notify("Terminal output copied"),()=>notify("Clipboard access was denied"))};
   const downloadOutput=()=>{if(!active)return;const blob=new Blob([active.output],{type:"text/plain;charset=utf-8"});const url=URL.createObjectURL(blob);const link=document.createElement("a");link.href=url;link.download=safeFilename(`${active.label}-${new Date().toISOString()}.log`);link.click();URL.revokeObjectURL(url)};
@@ -218,7 +259,7 @@ export default function SshWorkspace({environment,agentToken,agentCall,notify,co
         <nav className="ssh-tool-rail" aria-label="SSH workspace tools">{(["sftp","tunnels","snippets","settings"] as ToolPanel[]).map(item=><button key={item} className={panel===item?"active":""} onClick={()=>toggleTool(item)} aria-expanded={panel===item} title={`${item} - click to open, move away to auto-hide`}><i>{item==="sftp"?"SF":item==="tunnels"?"TUN":item==="snippets"?">_":"SET"}</i><span>{item}</span></button>)}<button className={`ssh-pin-toggle ${settings.toolsPinned?"active":""}`} onClick={()=>setSettings(value=>({...value,toolsPinned:!value.toolsPinned}))} title={settings.toolsPinned?"Unpin tool drawer":"Pin tool drawer"}><i>{settings.toolsPinned?"PIN":"AUTO"}</i><span>{settings.toolsPinned?"Pinned":"Auto-hide"}</span></button></nav>
         {(panel||connectionOpen)&&<div className={`ssh-tool-content ${connectionOpen?"connection":""}`} role={connectionOpen?"dialog":"complementary"} aria-modal={connectionOpen||undefined}>
           <div className="ssh-drawer-chrome"><span><b>{connectionOpen?"New SSH connection":panel==="sftp"?"SFTP browser":panel==="tunnels"?"Local tunnels":panel==="snippets"?"Command snippets":"Terminal settings"}</b><small>{connectionOpen?(settings.toolsPinned?"Pinned open":"Auto-hides after you leave - pin to keep open"):settings.toolsPinned?"Pinned open":"Auto-hides after you leave"}</small></span><aside><button className={settings.toolsPinned?"active":""} onClick={()=>setSettings(value=>({...value,toolsPinned:!value.toolsPinned}))}>{settings.toolsPinned?"Unpin":"Pin"}</button><button onClick={()=>connectionOpen?setConnectionOpen(false):setPanel(null)} aria-label="Close drawer">×</button></aside></div>
-        {connectionOpen&&<><header><b>Connection profile</b><small>Hostname, IPv4, or bracketed IPv6</small></header><label>Saved profile<select value={selectedProfile} onChange={event=>applyProfile(event.target.value)}><option value="">New profile</option>{scopedProfiles.map(profile=><option key={profile.id} value={profile.id}>{profile.name} · {profile.host}</option>)}</select></label><label>Profile name<input value={form.name} onChange={event=>setForm(value=>({...value,name:event.target.value}))} placeholder="Payments SIT"/></label><label>Hostname or IP<input value={form.host} onChange={event=>setForm(value=>({...value,host:event.target.value}))} placeholder="server.company.net or 10.20.30.40"/></label><div className="ssh-pair"><label>Username<input value={form.username} onChange={event=>setForm(value=>({...value,username:event.target.value}))} placeholder="opsuser"/></label><label>Port<input value={form.port} onChange={event=>setForm(value=>({...value,port:event.target.value}))}/></label></div><label>Authentication<select value={form.authMethod} onChange={event=>setForm(value=>({...value,authMethod:event.target.value as AuthMethod,password:"",passphrase:""}))}><option value="agent">OpenSSH agent</option><option value="key">Private key file</option><option value="password">Password</option></select></label>{form.authMethod==="key"&&<><label>Private key path<input value={form.keyPath} onChange={event=>setForm(value=>({...value,keyPath:event.target.value}))} placeholder="C:\Users\me\.ssh\id_ed25519"/></label><label>Optional passphrase<input type="password" autoComplete="off" value={form.passphrase} onChange={event=>setForm(value=>({...value,passphrase:event.target.value}))}/></label></>}{form.authMethod==="password"&&<label>Password<input type="password" autoComplete="off" value={form.password} onChange={event=>setForm(value=>({...value,password:event.target.value}))}/></label>}<div className="ssh-panel-actions"><button onClick={preflight} disabled={busy}>Inspect key</button><button className="primary" onClick={connect} disabled={busy}>{busy?"Working…":"Connect"}</button></div><div className="ssh-profile-actions"><button onClick={saveProfile}>Save metadata</button><button onClick={deleteProfile} disabled={!selectedProfile}>Delete</button></div><small className="ssh-security-note">A new server key is inspected before authentication, approved once, and pinned by the local agent. Passwords, passphrases, and private-key contents are never saved in browser profiles.</small>{evidence&&<div className={evidence.error||evidence.trustStatus==="changed"?"ssh-evidence error":"ssh-evidence"}>{evidence.error?<b>{evidence.error}</b>:<><b>{evidence.trustStatus==="new"?"New host key — approval required":evidence.trustStatus==="trusted"?"Pinned host key matched":"Host key changed — connection blocked"}</b><span>{evidence.host}:{evidence.port}</span>{evidence.hostKeys?.map((key:HostKey)=><code key={key.fingerprint}>{key.type}<small>{key.fingerprint}</small></code>)}{evidence.credentialSent===false&&<small>No SSH credential was sent during inspection.</small>}{evidence.previousFingerprint&&<code>Previously pinned<small>{evidence.previousFingerprint}</small></code>}{evidence.trustStatus!=="new"&&<button onClick={forgetHostTrust} disabled={busy}>Forget pinned key</button>}</>}</div>}</>}
+        {connectionOpen&&<><header><b>Connection profile</b><small>Hostname, IPv4, or bracketed IPv6</small></header><label>Saved profile<select value={selectedProfile} onChange={event=>applyProfile(event.target.value)}><option value="">New profile</option>{scopedProfiles.map(profile=><option key={profile.id} value={profile.id}>{profile.name} · {profile.host}</option>)}</select></label><label>Profile name<input value={form.name} onChange={event=>setForm(value=>({...value,name:event.target.value}))} placeholder="Payments SIT"/></label><label>Hostname or IP<input value={form.host} onChange={event=>{setSelectedProfile("");setForm(value=>({...value,host:event.target.value}))}} placeholder="server.company.net or 10.20.30.40"/></label><div className="ssh-pair"><label>Username<input value={form.username} onChange={event=>{setSelectedProfile("");setForm(value=>({...value,username:event.target.value}))}} placeholder="opsuser"/></label><label>Port<input value={form.port} onChange={event=>{setSelectedProfile("");setForm(value=>({...value,port:event.target.value}))}}/></label></div><label>Authentication<select value={form.authMethod} onChange={event=>{setSelectedProfile("");setForm(value=>({...value,authMethod:event.target.value as AuthMethod,password:"",passphrase:""}))}}><option value="agent">OpenSSH agent</option><option value="key">Private key file</option><option value="password">Password</option></select></label>{form.authMethod==="key"&&<><label>Private key path<input value={form.keyPath} onChange={event=>setForm(value=>({...value,keyPath:event.target.value}))} placeholder="C:\Users\me\.ssh\id_ed25519"/></label><label>Optional passphrase<input type="password" autoComplete="off" value={form.passphrase} onChange={event=>setForm(value=>({...value,passphrase:event.target.value}))}/></label></>}{form.authMethod==="password"&&<label>Password<input type="password" autoComplete="off" value={form.password} onChange={event=>setForm(value=>({...value,password:event.target.value}))}/></label>}<label className="ssh-remember-credential"><input type="checkbox" checked={rememberCredential} onChange={event=>setRememberCredential(event.target.checked)}/><span><b>Remember until agent stops</b><small>Credential stays in volatile local-agent memory only.</small></span></label><div className="ssh-panel-actions"><button onClick={preflight} disabled={busy}>Inspect key</button><button className="primary" onClick={()=>connect()} disabled={busy}>{busy?"Working…":"Connect"}</button></div><div className="ssh-profile-actions"><button onClick={saveProfile}>{rememberCredential?"Save + remember":"Save metadata"}</button><button onClick={deleteProfile} disabled={!selectedProfile}>Delete</button></div><small className="ssh-security-note">A new server key is inspected before authentication, approved once, and pinned by the local agent. Profile metadata stays in this browser; remembered passwords and passphrases stay only in volatile agent memory and clear when the agent stops.</small>{evidence&&<div className={evidence.error||evidence.trustStatus==="changed"?"ssh-evidence error":"ssh-evidence"}>{evidence.error?<b>{evidence.error}</b>:<><b>{evidence.trustStatus==="new"?"New host key — approval required":evidence.trustStatus==="trusted"?"Pinned host key matched":"Host key changed — connection blocked"}</b><span>{evidence.host}:{evidence.port}</span>{evidence.hostKeys?.map((key:HostKey)=><code key={key.fingerprint}>{key.type}<small>{key.fingerprint}</small></code>)}{evidence.credentialSent===false&&<small>No SSH credential was sent during inspection.</small>}{evidence.previousFingerprint&&<code>Previously pinned<small>{evidence.previousFingerprint}</small></code>}{evidence.trustStatus!=="new"&&<button onClick={forgetHostTrust} disabled={busy}>Forget pinned key</button>}</>}</div>}</>}
         {panel==="sftp"&&<><header><b>Read-only SFTP</b><small>Browse and download through the active session</small></header><div className="ssh-path"><button onClick={()=>listSftp(parentPath(remotePath))}>↑</button><input value={remotePath} onChange={event=>setRemotePath(event.target.value)}/><button onClick={()=>listSftp()} disabled={sftpBusy}>Go</button></div><div className="ssh-file-list">{sftpEntries.length?sftpEntries.map(entry=><button key={entry.name} onDoubleClick={()=>openSftpEntry(entry)} onClick={()=>entry.type==="directory"?listSftp(cleanPathJoin(remotePath,entry.name)):downloadSftp(cleanPathJoin(remotePath,entry.name),entry.name)}><i>{entry.type==="directory"?"DIR":entry.type==="symlink"?"LNK":"FILE"}</i><span><b>{entry.name}</b><small>{entry.permissions} · {entry.type==="file"?`${entry.size.toLocaleString()} B`:"folder"}</small></span></button>):<p>Select Go to list the remote path. Files are limited to 2 MB per browser download.</p>}</div></>}
         {panel==="tunnels"&&<><header><b>Local port forwarding</b><small>Loopback bind only — never exposed to the LAN</small></header><label>Local port<input value={forwardForm.localPort} onChange={event=>setForwardForm(value=>({...value,localPort:event.target.value}))}/><small>Use 0 to choose a free port.</small></label><label>Remote destination<input value={forwardForm.remoteHost} onChange={event=>setForwardForm(value=>({...value,remoteHost:event.target.value}))} placeholder="127.0.0.1"/></label><label>Remote port<input value={forwardForm.remotePort} onChange={event=>setForwardForm(value=>({...value,remotePort:event.target.value}))}/></label><button className="primary ssh-wide" onClick={openForward} disabled={!active||busy}>Open local tunnel</button><div className="ssh-forward-list">{active?.forwards?.map(forward=><article key={forward.forwardId}><i>↔</i><span><b>127.0.0.1:{forward.localPort}</b><small>to {forward.remoteHost}:{forward.remotePort}</small></span><button onClick={()=>closeForward(forward.forwardId)}>Close</button></article>)||<p>No active tunnels.</p>}</div></>}
         {panel==="snippets"&&<><header><b>Quick commands</b><small>Every run requires confirmation</small></header><div className="ssh-snippets">{snippets.map(snippet=><article key={snippet.id}><span><b>{snippet.name}</b><code>{snippet.command}</code></span><button onClick={()=>runSnippet(snippet)}>Run</button>{!defaultSnippets.some(item=>item.id===snippet.id)&&<button onClick={()=>setSnippets(items=>items.filter(item=>item.id!==snippet.id))}>×</button>}</article>)}</div><label>Snippet name<input value={snippetName} onChange={event=>setSnippetName(event.target.value)}/></label><label>Command<input value={snippetCommand} onChange={event=>setSnippetCommand(event.target.value)}/></label><button className="ssh-wide" onClick={addSnippet}>Add locally</button></>}

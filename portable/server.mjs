@@ -14,6 +14,7 @@ import { relationalBottleneckCatalogs, analyzeRelationalBottlenecks } from "./re
 import { runtimeTraceCatalog, validateRuntimeTraceInput, runtimeTraceSql, analyzeRuntimeTrace } from "./runtime-trace.mjs";
 import { compareMigrationLogs, migrationLogEngines } from "./migration-log-compare.mjs";
 import { diagnosticStudioCatalog, resolveDiagnosticPlaybook, buildDiagnosticIncidentReport } from "./diagnostic-studio.mjs";
+import { createSessionCredentialVault } from "./session-credentials.mjs";
 import { SSH_TERMINAL_LIMITS, normalizeSshHost, preflightSshTarget, forgetSshHostTrust, openSshSession, attachSshStream, writeToSshSession, resizeSshSession, closeSshSession, listSshSessions, openSshLocalForward, closeSshForward, listSshForwards, listSftpDirectory, readSftpFile, closeAllSshSessions } from "./ssh-terminal.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +32,7 @@ const VERSION_BASELINE_FILE = join(USER_DATA_ROOT, "devops-version-baseline.json
 const INVESTIGATION_FILE = join(USER_DATA_ROOT, "investigation-workspace.json");
 const CONTAINER_AUDIT_FILE = join(USER_DATA_ROOT, "container-change-audit.json");
 const TKPROF_ROOT = join(USER_DATA_ROOT, "tkprof");
+const sessionCredentialVault = createSessionCredentialVault();
 const sqlAdapterCatalog = {
   oracle: { name: "Oracle", client: "sqlplus", driver: "oracledb", port: 1521, tier: "Bundled direct driver + diagnostics", family: "database", auth: "Host credentials" },
   postgres: { name: "PostgreSQL", client: "psql", driver: "pg", port: 5432, tier: "Bundled direct driver + diagnostics", family: "database", auth: "Host credentials" },
@@ -356,8 +358,9 @@ function normalizeDatabaseConnection(input) {
   const host = String(source.host || "localhost").trim();
   const port = String(source.port || adapter.port || "").trim();
   const database = String(source.database || "").trim();
-  const username = String(source.username || "").trim();
-  const password = String(source.password || "");
+  const remembered = source.credentialId ? sessionCredentialVault.resolve("database", source.credentialId) : null;
+  const username = String(source.username || remembered?.username || "").trim();
+  const password = String(source.password || remembered?.password || "");
   const authMode = source.authMode === "context" ? "context" : "password";
   const tlsMode = ["require", "disable"].includes(source.tlsMode) ? source.tlsMode : "prefer";
   if (host && !/^[A-Za-z0-9_.-]{1,255}$/.test(host)) throw new Error("Enter a valid database host, account, or profile target");
@@ -2261,9 +2264,21 @@ async function runMongosyncController(input) {
   return { ok: true, action, endpoint: `127.0.0.1:${port}`, before: progress, response, requestedAt: new Date().toISOString(), note: action === "commit" ? "Cutover requested. Poll progress until state is COMMITTED before redirecting application traffic." : "Lifecycle request accepted. Refresh progress to observe the state transition." };
 }
 async function routeApi(req, res, url, port) {
-  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.28.0", port } });
+  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.29.0", port } });
   if (!isTrusted(req, port)) return json(res, 403, { ok: false, error: "Request rejected by local security policy" });
-  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.28.0", host: HOST, port });
+  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.29.0", host: HOST, port });
+  if (req.method === "POST" && url.pathname === "/api/credentials/session") {
+    const input = await body(req);
+    return json(res, 200, { ok: true, credential: sessionCredentialVault.store(input), storage: "volatile-agent-memory" });
+  }
+  if (req.method === "POST" && url.pathname === "/api/credentials/session/status") {
+    const input = await body(req);
+    return json(res, 200, { ok: true, credential: sessionCredentialVault.status(input.scope, input.id), storage: "volatile-agent-memory" });
+  }
+  if (req.method === "POST" && url.pathname === "/api/credentials/session/delete") {
+    const input = await body(req);
+    return json(res, 200, { ok: true, credential: sessionCredentialVault.remove(input.scope, input.id), storage: "volatile-agent-memory" });
+  }
   if (req.method === "GET" && url.pathname === "/api/tools/status") return json(res, 200, { ok: true, tools: await toolStatus() });
   if (req.method === "GET" && url.pathname === "/api/adapters") {
     const availability = Object.fromEntries(await Promise.all(Object.entries(sqlAdapterCatalog).map(async ([id, adapter]) => {
@@ -3097,7 +3112,8 @@ async function routeApi(req, res, url, port) {
   }
   if (req.method === "POST" && url.pathname === "/api/terminal/ssh/open") {
     const input = await body(req);
-    const session = await openSshSession(input);
+    const remembered = input.credentialId ? sessionCredentialVault.resolve("ssh", input.credentialId) : null;
+    const session = await openSshSession({ ...input, username: input.username || remembered?.username || "", password: input.password || remembered?.password || "", passphrase: input.passphrase || remembered?.passphrase || "" });
     return json(res, 200, { ok: true, ...session });
   }
   if (req.method === "GET" && url.pathname === "/api/terminal/ssh/stream") {
@@ -3180,8 +3196,8 @@ async function listen() {
 
 // Remote shells must not outlive the local service.
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  process.on(signal, () => { closeAllSshSessions(); process.exit(0); });
+  process.on(signal, () => { sessionCredentialVault.clear(); closeAllSshSessions(); process.exit(0); });
 }
-process.on("exit", () => closeAllSshSessions());
+process.on("exit", () => { sessionCredentialVault.clear(); closeAllSshSessions(); });
 
 listen().catch((error) => { console.error(`DBridge failed to start: ${error.message}`); process.exitCode = 1; });

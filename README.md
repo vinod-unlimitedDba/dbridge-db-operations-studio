@@ -20,7 +20,8 @@ If company security blocks unsigned portable executables, unzip
   recording, visual plans, regression comparison, timelines, controls, and
   sanitized evidence export.
 - Trusted SSH server tabs for hostname, IPv4, and bracketed IPv6 targets, with
-  known_hosts preflight, four bounded sessions, and non-secret saved profiles.
+  verify-before-auth host-key pinning, eight bounded sessions, and saved profiles
+  that can optionally recall credentials from volatile local-agent memory.
 - A resource-centric DevOps control plane organized by runtime, delivery, data
   movement, change comparison, and approved inspection.
 - A redesigned v2.21 application shell across every workspace, with consistent
@@ -34,9 +35,9 @@ If company security blocks unsigned portable executables, unzip
   before first paint so a dark session never flashes white, remembered on this
   laptop, and switchable from the header, the command palette or `Ctrl+Shift+L`
 - Named SQL Studio connection profiles for each engine, so one workstation can
-  hold separate production, UAT and reporting targets and recall any of them in
-  a single selection; profiles store the same fields as session recovery and
-  still exclude the database password
+  hold separate production, SIT, UAT-Test, DEV and reporting targets. Browser
+  profiles exclude passwords; optional one-click recall uses only the running
+  local agent's bounded, expiring memory vault.
 - Fuzzy command palette search across every workspace plus direct actions for
   appearance, density, shortcuts, profile capture and tool rescanning
 - A built-in keyboard shortcut map on `Shift+/`, and a compact display density
@@ -56,7 +57,8 @@ If company security blocks unsigned portable executables, unzip
   comments, MySQL digests, and SQL Server Query Store IDs or query hashes
 - Automatic SQL Studio connection-session recovery for engine, host, port,
   database/service, username, authentication and TLS preference, with per-engine
-  context and explicit save or clear controls; database passwords are never stored
+  context and explicit save or clear controls; passwords are never written to
+  browser storage or source control.
 - DBGate-style SQL Studio connection workflow with explicit Connect/Disconnect
   state, bundled direct drivers or approved integrated-client authentication, searchable
   schema and object browsing, double-click bounded query creation, and visual
@@ -176,11 +178,15 @@ installed and approved on the workstation: `sqlplus`, `psql`, `mysql`,
 DBridge never downloads missing tools while running. The GUI reports whether a
 bundled direct driver or an approved local client is ready.
 
-SQL Studio connection recovery uses browser-local storage on the current
-laptop. It stores only the selected engine, host, port, database/service,
-username, authentication method and TLS preference for each engine. The
-database password is explicitly excluded and must be entered again after a
-refresh, restart or engine change.
+SQL Studio connection profiles use browser-local storage on the current laptop
+for non-secret metadata only: engine, environment, host, port, database/service,
+username, authentication method and TLS preference. When **Remember until agent
+stops** is enabled, the password is stored in the loopback local agent's volatile,
+bounded memory vault for up to eight hours of activity. It is cleared on expiry,
+explicit deletion, deselecting Remember, or agent shutdown and is never returned
+by status APIs. Selecting a saved DB profile connects and opens SQL Workspace or
+MongoDB Studio; selecting a saved SSH profile opens its terminal after host-key
+verification.
 
 Remote server logs use the Windows OpenSSH client with an existing SSH agent
 or optional private-key path. The host must already be present in the user's
