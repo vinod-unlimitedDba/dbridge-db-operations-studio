@@ -82,3 +82,31 @@
   font-size: 6px;
   line-height: 1.4;
 }
+
+/* One credential-memory control shared by SQL Studio and SSH Terminal. */
+.keep-pass-switch {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid #d8e0e6;
+  border-radius: 8px;
+  background: #f7f9fb;
+  color: #637382;
+  cursor: pointer;
+  user-select: none;
+}
+.keep-pass-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.keep-pass-switch > i { position: relative; width: 27px; height: 15px; border-radius: 999px; background: #c4ced5; transition: .18s; }
+.keep-pass-switch > i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #17202a35; transition: .18s; }
+.keep-pass-switch.active > i { background: #1b9b8f; }
+.keep-pass-switch.active > i::after { left: 14px; }
+.keep-pass-switch > span { display: flex; flex-direction: column; gap: 1px; }
+.keep-pass-switch b { font-size: 7px; letter-spacing: .4px; }
+.keep-pass-switch small { color: #8b98a4; font-size: 6px; white-space: nowrap; }
+.keep-pass-switch:focus-within { outline: 2px solid #776df4; outline-offset: 2px; }
+[data-theme="dark"] .keep-pass-switch { border-color: #2b3b48; background: #111d28; color: #b0c0ca; }
+[data-theme="dark"] .keep-pass-switch > i { background: #354754; }
+[data-theme="dark"] .keep-pass-switch.active > i { background: #176c66; }
+@media (max-width: 980px) { .keep-pass-switch > span { display: none; } .keep-pass-switch { padding: 0 7px; } }

@@ -4,7 +4,16 @@ DBridge is a local-first database and DevOps operations console. It provides a
 browser GUI while all privileged work is performed by a loopback-only local
 service.
 
-## Portable Windows edition
+## Portable on any Node.js workstation
+
+The `DBridge-Node-Portable` package runs on Windows, macOS, or Linux with
+Node.js 22.13.0 or newer. Start it with `node portable-launcher.mjs`; Windows
+can use `Start-DBridge.cmd`, macOS can use `Start-DBridge.command`, and Linux
+or macOS can use `sh start-dbridge.sh`. On the first connected run, the
+launcher uses the included lockfile to install drivers compiled for that OS.
+Later launches work offline from that extracted folder.
+
+## Portable Windows offline edition
 
 Use `release/DBridge-Advanced-Portable.exe` for one-click launch. It extracts
 to the current user's temporary folder, opens the console on `127.0.0.1`, and
@@ -13,6 +22,8 @@ a service, write registry keys, modify PATH, or require administrator access.
 
 If company security blocks unsigned portable executables, unzip
 `release/DBridge-Portable.zip` and double-click `Start-DBridge.cmd` instead.
+This Windows package includes Node.js and its dependencies, so it can start
+without downloading packages.
 
 ## Capabilities
 

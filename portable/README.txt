@@ -1,14 +1,23 @@
 DBridge Advanced Portable
 =========================
 
-Start
------
-Double-click Start-DBridge.cmd. A browser opens to the local DBridge console.
-Close the command window to stop it.
+Start on Windows, macOS or Linux
+---------------------------------
+Requires Node.js 22.13.0 or newer.
+
+Universal: node portable-launcher.mjs
+Windows:   double-click Start-DBridge.cmd
+macOS:     open Start-DBridge.command, or run sh start-dbridge.sh
+Linux:     run sh start-dbridge.sh
+
+The Node-portable package installs its locked, platform-specific database
+drivers into this extracted folder on the first connected run. Later launches
+work offline. The separate Windows offline package already includes Node.js and
+all dependencies. Close the terminal window or press Ctrl+C to stop DBridge.
 
 Friendly application shell
 --------------------------
-DBridge v2.22 uses one consistent application shell across SQL Studio,
+DBridge v2.30 uses one consistent application shell across SQL Studio,
 performance, investigation, logs, DevOps, Terminal and security. The left navigation
 describes each workspace, the header shows the current task, and the safety
 strip keeps local-only, in-memory credential and read-only status visible.
@@ -80,10 +89,12 @@ PostgreSQL, currentOp/existing profiler/query statistics for MongoDB,
 Performance Schema digest/history for MySQL, and Query Store/cached DMVs for
 SQL Server.
 
-No installation
----------------
-DBridge binds only to 127.0.0.1 and does not need administrator access.
-The portable bundle includes its own Node.js runtime. It does not add registry
+Portable runtime
+----------------
+DBridge binds only to 127.0.0.1 and does not need administrator access. The
+cross-platform package uses Node.js already installed on the workstation and
+runs npm ci only when its local node_modules folder is absent. The Windows
+offline package includes its own Node.js runtime. Neither edition adds registry
 keys, services, startup items, or system PATH entries.
 
 SQL Studio connection

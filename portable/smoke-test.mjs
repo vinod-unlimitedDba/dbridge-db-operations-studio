@@ -300,7 +300,7 @@ try {
   const token = html.match(/name="dbridge-token" content="([a-f0-9]+)"/)?.[1];
   if (!token) throw new Error("Session token was not injected");
   const health = await request("/api/health", token);
-  if (health.product !== "DBridge Portable" || health.version !== "2.28.0") throw new Error("Health response was invalid");
+  if (health.product !== "DBridge Portable" || health.version !== "2.30.0") throw new Error("Health response was invalid");
   const diagnosticStudio = await request("/api/performance/diagnostic-studio/catalog", token);
   if (diagnosticStudio.playbooks?.length !== 8 || Object.keys(diagnosticStudio.engines || {}).length !== 6 || !/does not kill sessions/i.test(diagnosticStudio.safety || "")) throw new Error("SQL Diagnostic Incident Command catalog was incomplete");
   const migrationLogCatalog = await request("/api/logs/migration-compare/catalog", token);

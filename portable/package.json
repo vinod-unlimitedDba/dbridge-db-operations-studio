@@ -1,6 +1,6 @@
 {
   "name": "dbridge-portable-runtime",
-  "version": "2.22.0",
+  "version": "2.30.0",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -12,5 +12,13 @@
     "pg": "^8.22.0",
     "ssh2": "^1.17.0",
     "tedious": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node portable-launcher.mjs",
+    "start:server": "node server.mjs",
+    "smoke": "node smoke-test.mjs"
   }
 }

@@ -15,6 +15,7 @@ state.mongodbBottleneck = { result: null, previousResult: null, report: "", runn
 state.runtimeTrace = { engine: "oracle", tab: "findings", results: {}, report: "", running: false };
 state.connectionSession = { activeEnvironment: "Production", activeEngine: "oracle", timer: null, restoring: false, suspendAutoSave: false };
 state.sqlStudio = { connected: false, connecting: false, fingerprint: "", objects: [], objectFilter: "", result: null, adapters: {} };
+state.credentials = { keepPass: true };
 const containerWriteActions = {
   kubernetes: [
     { id: "restartDeployment", label: "Restart deployment rollout", targetKind: "deployment", placeholder: "deployment-name", guidance: "Triggers a rolling restart using the current Deployment specification." },
@@ -72,6 +73,7 @@ let shortcutMapPreviousFocus = null;
 
 const UI_PREFERENCES_STORAGE_KEY = "dbridge.ui.preferences.v1";
 const CONNECTION_PROFILE_STORAGE_KEY = "dbridge.sql.profiles.v1";
+const KEEP_PASS_STORAGE_KEY = "dbridge.keep-pass.v1";
 
 state.ui = { themeMode: "auto", density: "comfortable", sidebar: "pinned", pulseTimer: null, activeRequests: 0 };
 
@@ -283,7 +285,7 @@ function renderConnectionProfiles(selectedName = "") {
   $("#connectionProfileCount").textContent = profiles.length ? `${profiles.length} saved for ${sqlAdapterUi[engine].name}` : "None saved";
 }
 
-function saveConnectionProfile() {
+async function saveConnectionProfile() {
   const engine = $("#sqlEngine").value;
   const environment = currentSqlEnvironment();
   if (!sqlAdapterUi[engine]) return toast("Select a supported database engine", true);
@@ -293,17 +295,18 @@ function saveConnectionProfile() {
   try {
     const name = sanitizeProfileName(requested);
     const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
+    if (state.credentials.keepPass && $("#sqlPassword").value) await rememberDatabaseCredential(connection());
     const profiles = readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.environment === environment && profile.name === name));
     profiles.push({ name, engine, environment, entry });
     writeConnectionProfiles(profiles);
     renderConnectionProfiles(name);
-    toast(`Connection profile "${name}" saved without the password`);
+    toast(state.credentials.keepPass ? `Connection profile "${name}" saved; credential is volatile until the agent stops` : `Connection profile "${name}" saved without the password`);
   } catch (error) {
     toast(error.message, true);
   }
 }
 
-function applyConnectionProfile(name) {
+async function applyConnectionProfile(name) {
   if (!name) { $("#deleteConnectionProfile").disabled = true; return; }
   const engine = $("#sqlEngine").value;
   const environment = currentSqlEnvironment();
@@ -317,15 +320,26 @@ function applyConnectionProfile(name) {
   updateConnectionAdapterUi(); updateSnapshotTarget(); updateOracleXrayTarget(); updatePerformanceContextTarget();
   scheduleConnectionSessionSave();
   $("#deleteConnectionProfile").disabled = false;
+  if (state.credentials.keepPass) {
+    try {
+      const status = await api(`/api/credentials/session/status?scope=database&id=${encodeURIComponent(databaseCredentialId(connection()))}`);
+      if (status.credential?.available) { toast(`Loaded "${name}" · connecting with agent-memory credential`); await connectSqlStudio(); return; }
+    } catch { /* metadata remains usable without a remembered credential */ }
+  }
   toast(`Loaded "${name}" · enter the password to connect`);
 }
 
-function deleteConnectionProfile() {
+async function deleteConnectionProfile() {
   const engine = $("#sqlEngine").value;
   const name = $("#connectionProfileSelect").value;
   if (!name) return;
   if (!window.confirm(`Delete the saved connection profile "${name}"?`)) return;
   const environment = currentSqlEnvironment();
+  const selected = readConnectionProfiles().find((profile) => profile.engine === engine && profile.environment === environment && profile.name === name);
+  if (selected && state.credentials.keepPass) {
+    const payload = { environment, engine, connection: { ...selected.entry } };
+    try { await api("/api/credentials/session/delete", { method: "POST", body: JSON.stringify({ scope: "database", id: databaseCredentialId(payload) }) }); } catch { /* profile deletion still proceeds */ }
+  }
   writeConnectionProfiles(readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.environment === environment && profile.name === name)));
   renderConnectionProfiles();
   toast(`Connection profile "${name}" deleted`);
@@ -538,6 +552,59 @@ async function api(path, options = {}) {
   }
 }
 
+function credentialLocator(prefix, values) {
+  const source = values.map((value) => String(value || "").trim().toLowerCase()).join("\u0000");
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) { hash ^= source.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+  return `${prefix}-${(hash >>> 0).toString(36)}`;
+}
+
+function databaseCredentialId(payload = connection()) {
+  const source = payload.connection || {};
+  return credentialLocator("db", [payload.environment, payload.engine, source.host, source.port, source.database, source.username]);
+}
+
+function renderKeepPass() {
+  const enabled = state.credentials.keepPass;
+  $("#keepPassToggle").checked = enabled;
+  $("#keepPassSwitch").classList.toggle("active", enabled);
+  $("#keepPassSwitch").setAttribute("aria-pressed", String(enabled));
+  $("#keepPassStatus").textContent = enabled ? "Agent memory" : "Disabled";
+}
+
+async function changeKeepPass(enabled, announce = true) {
+  state.credentials.keepPass = Boolean(enabled);
+  try { localStorage.setItem(KEEP_PASS_STORAGE_KEY, String(state.credentials.keepPass)); } catch { /* preference only */ }
+  renderKeepPass();
+  if (!state.credentials.keepPass) {
+    $("#sqlPassword").value = "";
+    try { await api("/api/credentials/session/clear", { method: "POST", body: "{}" }); }
+    catch (error) { if (announce) toast(error.message, true); }
+  }
+  window.dispatchEvent(new CustomEvent("dbridge-keep-pass-changed", { detail: { enabled: state.credentials.keepPass } }));
+  if (announce) toast(state.credentials.keepPass ? "Keep pass enabled for SQL Studio and SSH until the local agent stops" : "Keep pass disabled; remembered credentials cleared");
+}
+
+function restoreKeepPass() {
+  let enabled = true;
+  try { enabled = localStorage.getItem(KEEP_PASS_STORAGE_KEY) !== "false"; } catch { /* default on */ }
+  state.credentials.keepPass = enabled;
+  window.dbridgeKeepPassEnabled = () => state.credentials.keepPass;
+  renderKeepPass();
+}
+
+async function rememberDatabaseCredential(payload) {
+  const source = payload.connection || {};
+  if (!state.credentials.keepPass || source.authMode === "context") { delete source.credentialId; return payload; }
+  source.credentialId = databaseCredentialId(payload);
+  if (source.password) {
+    await api("/api/credentials/session", { method: "POST", body: JSON.stringify({ scope: "database", id: source.credentialId, username: source.username, password: source.password }) });
+    source.password = "";
+    $("#sqlPassword").value = "";
+  }
+  return payload;
+}
+
 function toast(message, error = false) {
   const element = $("#toast");
   element.textContent = message;
@@ -695,7 +762,9 @@ function openFriendlyWorkspaceTarget(button) {
 }
 
 function connection(engineId = "sqlEngine") {
-  return { environment: currentSqlEnvironment(), engine: $(`#${engineId}`).value, connection: { host: $("#sqlHost").value.trim(), port: $("#sqlPort").value.trim(), database: $("#sqlDatabase").value.trim(), username: $("#sqlUsername").value.trim(), password: $("#sqlPassword").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value } };
+  const payload = { environment: currentSqlEnvironment(), engine: $(`#${engineId}`).value, connection: { host: $("#sqlHost").value.trim(), port: $("#sqlPort").value.trim(), database: $("#sqlDatabase").value.trim(), username: $("#sqlUsername").value.trim(), password: $("#sqlPassword").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value } };
+  if (state.credentials.keepPass && payload.connection.authMode === "password") payload.connection.credentialId = databaseCredentialId(payload);
+  return payload;
 }
 
 const CONNECTION_SESSION_STORAGE_KEY = "dbridge.sql.connection.v1";
@@ -948,12 +1017,15 @@ function applyDbStudioAutofill() {
   toast(`${environment} ${sqlAdapterUi[engine].name} connection autofilled without secrets`);
 }
 
-function clearDbStudioSecrets() {
+async function clearDbStudioSecrets() {
   $("#sqlPassword").value = "";
   $("#showSqlPassword").textContent = "Show";
   $("#sqlPassword").type = "password";
+  if (state.credentials.keepPass) {
+    try { await api("/api/credentials/session/delete", { method: "POST", body: JSON.stringify({ scope: "database", id: databaseCredentialId(connection()) }) }); } catch { /* field is still cleared */ }
+  }
   disconnectSqlStudio(false);
-  toast("Database password cleared from browser memory");
+  toast("Database credential cleared from browser and volatile agent memory");
 }
 
 async function validateDbStudioConnection() {
@@ -1038,7 +1110,8 @@ function updateConnectionAdapterUi() {
 
 function sqlConnectionFingerprint(payload = connection()) {
   const c = payload.connection || {};
-  return [payload.environment, payload.engine, c.authMode, c.tlsMode, c.host, c.port, c.database, c.username, c.password].map((value) => String(value || "")).join("\u0000");
+  const credential = state.credentials.keepPass ? (c.credentialId || databaseCredentialId(payload)) : c.password;
+  return [payload.environment, payload.engine, c.authMode, c.tlsMode, c.host, c.port, c.database, c.username, credential].map((value) => String(value || "")).join("\u0000");
 }
 
 function setSqlStudioConnectionState(status, title, detail) {
@@ -1078,6 +1151,7 @@ async function connectSqlStudio(options = {}) {
   setBusy(button, true, "Connecting…");
   setSqlStudioConnectionState("connecting", `Connecting to ${adapter.name}`, `${payload.environment} · ${payload.connection.host || "active context"}${payload.connection.database ? ` / ${payload.connection.database}` : ""}`);
   try {
+    await rememberDatabaseCredential(payload);
     const result = await api("/api/connections/check", { method: "POST", body: JSON.stringify(payload) });
     state.sqlStudio.fingerprint = sqlConnectionFingerprint(payload);
     const access = result.access === "direct" ? `${adapter.driver} bundled driver` : `${adapter.client} local client`;
@@ -4921,6 +4995,8 @@ async function copyFrom(selector) { try { await navigator.clipboard.writeText($(
 
 function bind() {
   placeGoldenGateInSqlStudio();
+  restoreKeepPass();
+  $("#keepPassToggle").addEventListener("change", (event) => changeKeepPass(event.target.checked));
   $("#menu").addEventListener("click", toggleApplicationSidebar);
   $("#sidebarScrim").addEventListener("click", closeApplicationSidebar);
   $("#openCommandPalette").addEventListener("click", openCommandPalette);

@@ -2013,7 +2013,13 @@ function parseTkprofOutput(text) {
 
 async function openBrowser(url) {
   if (process.env.DBRIDGE_NO_BROWSER === "1") return;
-  const child = spawn("explorer.exe", [url], { windowsHide: true, detached: true, stdio: "ignore" });
+  const launch = process.platform === "win32"
+    ? { command: "explorer.exe", args: [url] }
+    : process.platform === "darwin"
+      ? { command: "open", args: [url] }
+      : { command: "xdg-open", args: [url] };
+  const child = spawn(launch.command, launch.args, { windowsHide: true, detached: true, stdio: "ignore" });
+  child.once("error", () => {});
   child.unref();
 }
 
@@ -2264,9 +2270,9 @@ async function runMongosyncController(input) {
   return { ok: true, action, endpoint: `127.0.0.1:${port}`, before: progress, response, requestedAt: new Date().toISOString(), note: action === "commit" ? "Cutover requested. Poll progress until state is COMMITTED before redirecting application traffic." : "Lifecycle request accepted. Refresh progress to observe the state transition." };
 }
 async function routeApi(req, res, url, port) {
-  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.29.0", port } });
+  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.30.0", port } });
   if (!isTrusted(req, port)) return json(res, 403, { ok: false, error: "Request rejected by local security policy" });
-  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.29.0", host: HOST, port });
+  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.30.0", host: HOST, port });
   if (req.method === "POST" && url.pathname === "/api/credentials/session") {
     const input = await body(req);
     return json(res, 200, { ok: true, credential: sessionCredentialVault.store(input), storage: "volatile-agent-memory" });
@@ -2278,6 +2284,11 @@ async function routeApi(req, res, url, port) {
   if (req.method === "POST" && url.pathname === "/api/credentials/session/delete") {
     const input = await body(req);
     return json(res, 200, { ok: true, credential: sessionCredentialVault.remove(input.scope, input.id), storage: "volatile-agent-memory" });
+  }
+  if (req.method === "POST" && url.pathname === "/api/credentials/session/clear") {
+    await body(req);
+    sessionCredentialVault.clear();
+    return json(res, 200, { ok: true, credential: { available: false }, storage: "volatile-agent-memory" });
   }
   if (req.method === "GET" && url.pathname === "/api/tools/status") return json(res, 200, { ok: true, tools: await toolStatus() });
   if (req.method === "GET" && url.pathname === "/api/adapters") {

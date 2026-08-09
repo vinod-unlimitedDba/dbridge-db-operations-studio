@@ -72,6 +72,10 @@
         </div>
         <div class="header-actions">
           <button type="button" class="global-search-trigger" id="openCommandPalette"><span>Search tools and workspaces</span><kbd>Ctrl K</kbd></button>
+          <label class="keep-pass-switch active" id="keepPassSwitch" title="Keep database and SSH credentials only in volatile local-agent memory">
+            <input id="keepPassToggle" type="checkbox" checked aria-label="Keep pass for every workspace">
+            <i></i><span><b>KEEP PASS</b><small id="keepPassStatus">Agent memory</small></span>
+          </label>
           <span class="session-pulse" id="sessionPulse" title="Local session activity"><i></i><span>SESSION</span><b id="sessionPulseText">Idle</b></span>
           <span id="clock"></span>
           <span class="agent"><i></i>Local agent online</span>
@@ -152,7 +156,7 @@
           </div>
         </section>
         <section class="friendly-start-path" aria-label="SQL Studio getting started">
-          <div><span>START HERE</span><b>Three simple steps</b><small>Your password stays in memory and is never saved.</small></div>
+          <div><span>START HERE</span><b>Three simple steps</b><small>Keep pass uses volatile local-agent memory and clears when the agent stops.</small></div>
           <button type="button" data-workspace-target="sqlEngine"><i>1</i><span><b>Choose &amp; connect</b><small>Select the database and enter its approved connection.</small></span></button>
           <button type="button" data-workspace-target="databaseExplorerSearch"><i>2</i><span><b>Browse or write</b><small>Open an object or use a saved editor tab.</small></span></button>
           <button type="button" data-workspace-target="runSql"><i>3</i><span><b>Run &amp; review</b><small>Execute safely, then inspect Results or Messages.</small></span></button>
@@ -180,9 +184,9 @@
                 <button type="button" id="saveConnectionProfile">Save as…</button>
                 <button type="button" class="danger" id="deleteConnectionProfile" disabled>Delete</button>
               </div>
-              <div class="connection-profiles-note"><i>◆</i><span>Named targets for this engine, stored on this laptop only. Passwords are never included.</span></div>
+              <div class="connection-profiles-note"><i>◆</i><span>Named target metadata is stored on this laptop. Keep pass stores secrets only in volatile agent memory.</span></div>
             </section>
-            <div class="secure-note"><span>◆</span><p>Connection fields are restored on this laptop. The password is never saved.</p></div>
+            <div class="secure-note"><span>◆</span><p>Connection fields are restored locally. Keep pass never writes the password to browser storage or disk.</p></div>
             <section class="database-explorer" aria-label="Database object explorer">
               <div class="database-explorer-head"><div><span>DATABASE EXPLORER</span><b id="databaseExplorerTarget">Connect to browse objects</b></div><button type="button" id="refreshDatabaseExplorer" title="Refresh database objects" disabled>↻</button></div>
               <label class="database-explorer-search">FILTER OBJECTS<input id="databaseExplorerSearch" placeholder="schema, table, view…" disabled></label>
@@ -838,7 +842,7 @@ DBridge reads only appended bytes and does not lock or modify the source file.</
             <span><i></i>Content Security Policy</span>
             <span><i></i>Command allowlists</span>
             <span><i></i>Bounded input and output</span>
-            <span><i></i>No saved passwords</span>
+            <span><i></i>Volatile credential vault</span>
           </div>
         </section>
         <div class="security-grid"><article class="panel"><span>◆</span><h2>Loopback only</h2><p>The service binds to <code>127.0.0.1</code>. Other machines cannot connect to it.</p></article><article class="panel"><span>◉</span><h2>Same-origin token</h2><p>API requests require a random token created for the current launch.</p></article><article class="panel"><span>▤</span><h2>Read-only first</h2><p>Mutating SQL is rejected until write mode is explicitly enabled.</p></article><article class="panel"><span>⌁</span><h2>No credential files</h2><p>Passwords remain in memory and are not saved by DBridge.</p></article><article class="panel"><span>≡</span><h2>Bounded file reads</h2><p>Log tails and trace analysis enforce size limits and never modify files.</p></article><article class="panel"><span>◫</span><h2>No auto-installs</h2><p>DevOps actions use tools already approved and available in PATH.</p></article></div>

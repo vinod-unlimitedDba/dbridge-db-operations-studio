@@ -198,3 +198,19 @@
 .devops-url-pass{grid-template-columns:minmax(260px,2fr) minmax(110px,.7fr) minmax(130px,.85fr) minmax(140px,auto) auto}.devops-url-pass input[type="checkbox"]{width:14px;height:14px;min-width:14px;margin:0;padding:0;accent-color:#4ec9c2}.devops-url-pass .devops-remember{height:34px;align-items:center;flex-direction:row;gap:7px;padding:0 9px;border:1px solid #2a424c;border-radius:6px;background:#07131b;color:#8ca4ab;letter-spacing:0}.devops-url-pass .devops-remember span{font-size:7px;white-space:nowrap}
 @media(max-width:1180px){.devops-url-pass{grid-template-columns:repeat(2,minmax(0,1fr))}.devops-url-pass .devops-url-field,.devops-url-pass>small{grid-column:1/-1}.devops-url-pass>button{justify-self:end}}
 @media(max-width:650px){.devops-url-pass{grid-template-columns:1fr}.devops-url-pass .devops-url-field,.devops-url-pass>small{grid-column:1}.devops-url-pass>button{width:100%;justify-self:stretch}}
+
+/* Global cross-tab credential memory */
+.ops-topbar>aside{align-items:center;gap:8px}
+.keep-pass-global{height:34px;display:flex;align-items:center;gap:7px;padding:0 9px;border:1px solid #2a3e48;border-radius:8px;background:#0d1a24;color:#8197a0;cursor:pointer;user-select:none}
+.keep-pass-global:hover{border-color:#3b6368;color:#b8cacd}
+.keep-pass-global input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.ops-topbar .keep-pass-global>i{position:relative;width:27px;height:15px;display:block;border-radius:999px;background:#263943;box-shadow:none;transition:.18s}
+.keep-pass-global>i:after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#71858e;transition:.18s}
+.ops-topbar .keep-pass-global.active>i{background:#174d49}
+.keep-pass-global.active>i:after{left:14px;background:#5ed7cf}
+.keep-pass-global>span{display:flex;flex-direction:column;gap:1px}
+.keep-pass-global b{font-size:7px;text-transform:uppercase}
+.keep-pass-global small{color:#5e7680;font-size:6px;white-space:nowrap}
+.keep-pass-global:focus-within{outline:1px solid #55cfc8;outline-offset:2px}
+@media(max-width:920px){.ops-topbar{grid-template-columns:1fr auto auto}.ops-topbar>aside{display:flex}.ops-topbar .agent-status{display:none}.keep-pass-global small{display:none}}
+@media(max-width:650px){.keep-pass-global{padding:0 7px}.keep-pass-global>span{display:none}}

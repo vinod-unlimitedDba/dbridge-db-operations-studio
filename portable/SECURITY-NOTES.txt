@@ -1,11 +1,12 @@
-DBridge Portable v2.22 - Security Notes
+DBridge Portable v2.30 - Security Notes
 =======================================
 
 Purpose
 -------
-This package is an install-free local database and DevOps diagnostic console.
-Extract the full ZIP to a user-writable folder, then double-click
-Start-DBridge.cmd. Close the console window to stop DBridge.
+This package is a local database and DevOps diagnostic console. Extract it to
+a user-writable folder. On Windows use Start-DBridge.cmd; on macOS or Linux use
+node portable-launcher.mjs or sh start-dbridge.sh. Close the terminal window or
+press Ctrl+C to stop DBridge.
 
 Security boundary
 -----------------
@@ -26,7 +27,7 @@ Security boundary
   terminal templates and are never submitted to a database.
 - Arbitrary shell text is not accepted by the DevOps GUI or Terminal workspace.
 - Terminal tabs restore only non-secret profile context; their output is session-only.
-- DBridge does not download or install tools.
+- The Windows offline bundle does not download tools. The Node-portable bundle runs locked npm dependency installation only when node_modules is absent.
 
 Company controls
 ----------------
@@ -40,8 +41,9 @@ Package verification
 --------------------
 The release folder includes:
 
-1. DBridge-Portable.zip
-2. DBridge-Portable.zip.sha256.txt
+1. DBridge-Portable.zip and its SHA256 file (Windows offline)
+2. DBridge-Node-Portable.zip and its SHA256 file (all Node.js platforms)
+3. DBridge-Node-Portable.tar.gz and its SHA256 file (macOS/Linux friendly)
 
 Use the SHA256 value to confirm that the received ZIP matches the original.
 The ZIP also contains PACKAGE-MANIFEST.txt with hashes of its application files.
@@ -52,9 +54,9 @@ Send the ZIP only through a company-approved email or file-transfer channel.
 Do not include database passwords, SSH keys, cloud tokens, connection exports,
 logs, traces, or incident evidence in the package.
 
-- Interactive SSH server tabs require an existing known_hosts entry and verify
-  the presented key on every connection. Hostname, IPv4, and IPv6 inputs are
-  validated. Sessions are capped at four and expire after 15 minutes idle.
+- Interactive SSH server tabs inspect a new host key before authentication, ask for
+  approval once, pin the fingerprint locally, and block unexpected key changes. Hostname, IPv4, and IPv6 inputs are
+  validated. Sessions are bounded and expire after inactivity.
 - Saved server profiles contain only label, host, port, username, and selected
-  authentication method. Passwords, passphrases, and private-key contents are
-  never written to browser storage.
+  authentication method. Passwords and passphrases can be kept only in the running agent's bounded,
+  expiring memory vault; they are never written to browser storage.

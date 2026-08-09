@@ -22,6 +22,18 @@
   let connecting = false;
   let profiles = [];
 
+  function keepPassEnabled() {
+    if (typeof window.dbridgeKeepPassEnabled === "function") return window.dbridgeKeepPassEnabled();
+    try { return localStorage.getItem("dbridge.keep-pass.v1") !== "false"; } catch { return true; }
+  }
+
+  function credentialId(form = readConnectionForm()) {
+    const source = [form.environment, form.host, form.port, form.username].map((value) => String(value || "").trim().toLowerCase()).join("\u0000");
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index += 1) { hash ^= source.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+    return `ssh-${(hash >>> 0).toString(36)}`;
+  }
+
   function notify(message, isError = false) {
     if (typeof window.toast === "function") window.toast(message, isError);
     else if (isError) console.error(message);
@@ -325,6 +337,15 @@
         notify("Connection cancelled before authentication");
         return;
       }
+      if (keepPassEnabled()) {
+        payload.credentialId = credentialId(payload);
+        if (payload.password || payload.passphrase) {
+          await call("/api/credentials/session", { method: "POST", body: JSON.stringify({ scope: "ssh", id: payload.credentialId, username: payload.username, password: payload.password, passphrase: payload.passphrase }) });
+          payload.password = "";
+          payload.passphrase = "";
+          clearSecrets();
+        }
+      }
       const opened = await call("/api/terminal/ssh/open", {
         method: "POST",
         body: JSON.stringify({ ...payload, trustHostKey, hostFingerprint: inspected.fingerprint, hostKeyType: inspected.keyType }),
@@ -390,7 +411,7 @@
     if (scoped.some((profile) => profile.id === selected)) select.value = selected;
   }
 
-  function applyProfile() {
+  async function applyProfile() {
     const profile = profiles.find((item) => item.id === el("sshSavedProfile").value);
     if (!profile) return;
     el("sshProfileName").value = profile.name;
@@ -400,10 +421,16 @@
     el("sshTerminalAuth").value = profile.authMethod || "agent";
     updateAuthFields();
     el("sshPreflightResult").className = "ssh-preflight-result";
-    el("sshPreflightResult").innerHTML = `<i></i><span><b>${profile.name}</b> Profile loaded. Secrets were not saved.</span>`;
+    el("sshPreflightResult").innerHTML = `<i></i><span><b>${profile.name}</b> Profile loaded. Credential lookup uses volatile agent memory.</span>`;
+    if (keepPassEnabled()) {
+      try {
+        const status = await call(`/api/credentials/session/status?scope=ssh&id=${encodeURIComponent(credentialId())}`);
+        if (status.credential?.available) { notify(`${profile.name} loaded; connecting with agent-memory credential`); await connect(); }
+      } catch { /* profile metadata remains available */ }
+    }
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     const form = readConnectionForm();
     const name = el("sshProfileName").value.trim();
     if (!name || !form.host || !form.username) return notify("Enter a profile name, server and username", true);
@@ -418,16 +445,26 @@
       username: form.username.slice(0, 64),
       authMethod: form.authMethod,
     };
+    if (keepPassEnabled() && (form.password || form.passphrase)) {
+      try {
+        await call("/api/credentials/session", { method: "POST", body: JSON.stringify({ scope: "ssh", id: credentialId(form), username: form.username, password: form.password, passphrase: form.passphrase }) });
+        clearSecrets();
+      } catch (error) { return notify(error.message, true); }
+    }
     profiles = [profile, ...profiles.filter((item) => item.id !== profile.id)].slice(0, 30);
     saveProfiles();
     renderProfiles();
     el("sshSavedProfile").value = profile.id;
-    notify("Server profile saved without passwords, passphrases or key contents");
+    notify(keepPassEnabled() ? "Server profile saved; any entered credential is volatile until the agent stops" : "Server profile saved without passwords, passphrases or key contents");
   }
 
-  function deleteProfile() {
+  async function deleteProfile() {
     const id = el("sshSavedProfile").value;
     if (!id) return notify("Select a saved server profile", true);
+    const selected = profiles.find((item) => item.id === id);
+    if (selected && keepPassEnabled()) {
+      try { await call("/api/credentials/session/delete", { method: "POST", body: JSON.stringify({ scope: "ssh", id: credentialId(selected) }) }); } catch { /* metadata deletion still proceeds */ }
+    }
     profiles = profiles.filter((item) => item.id !== id);
     saveProfiles();
     renderProfiles();
@@ -505,6 +542,7 @@
     el("sshSaveProfile").addEventListener("click", saveProfile);
     el("sshDeleteProfile").addEventListener("click", deleteProfile);
 
+    window.addEventListener("dbridge-keep-pass-changed", (event) => { if (!event.detail?.enabled) clearSecrets(); });
     window.addEventListener("resize", () => {
       const active = activeSession();
       if (!active?.fit) return;
