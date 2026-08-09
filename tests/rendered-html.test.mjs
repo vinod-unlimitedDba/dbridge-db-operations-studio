@@ -118,3 +118,11 @@ test("routes database connections and safe DevOps URLs into their workspaces",as
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   assert.equal(css.includes(".devops-url-pass"),true,"DevOps URL control styling");
 });
+
+test("expands the canvas and adds advanced SQL guard and guided DevOps packs",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["Wide canvas","SQL GUARD","Add 100-row guard","SQL diagnostics","READ-ONLY RESPONSE PACKS","Cluster triage","Container pressure","Delivery failure","Inventory drift"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["workspaceWide","dbops.workspace-wide.v1","sqlReview","applySafeRowLimit","runGuidedOps","GuidedOpsPack"])assert.equal(source.includes(implementation),true,implementation);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".workspace-wide",".workspace-wide-toggle",".sql-review-strip",".guided-ops-deck"])assert.equal(css.includes(selector),true,selector);
+});

@@ -30,6 +30,7 @@ type SqlWorksheet = { id:string; name:string; engine:string; content:string; dir
 type SqlHistoryEntry = { id:string; worksheetId:string; sql:string; status:"success"|"failed"; durationMs:number; rowCount:number; executedAt:string; engine:string; environment:Environment };
 type SavedSqlScript = { id:string; name:string; sql:string; engine:string; savedAt:string };
 type SqlInspectorMode = "history" | "scripts" | "context";
+type GuidedOpsPack = "cluster-triage" | "container-pressure" | "delivery-failure" | "inventory-drift";
 
 const AGENT_URL="http://127.0.0.1:17865";
 const environments:Environment[]=["Production","SIT","UAT-Test","DEV"];
@@ -83,6 +84,12 @@ const deepDiveRoutes:Record<string,string>={
   mariadb:"/api/performance/relational-bottleneck/analyze",
   sqlserver:"/api/performance/relational-bottleneck/analyze",
 };
+const guidedOpsPacks:{id:GuidedOpsPack;mark:string;title:string;detail:string}[]=[
+  {id:"cluster-triage",mark:"K8S",title:"Cluster triage",detail:"Workloads, events, nodes and pressure"},
+  {id:"container-pressure",mark:"CTR",title:"Container pressure",detail:"Capacity, stats, storage and runtime"},
+  {id:"delivery-failure",mark:"CI",title:"Delivery failure",detail:"Workflow, pull request and auth evidence"},
+  {id:"inventory-drift",mark:"CFG",title:"Inventory drift",detail:"Inventory, graph and effective config"},
+];
 const devopsActionMap:Record<string,string[]>={
   kubernetes:["cluster","namespaces","nodes","pods","deployments","services","events","topPods","topNodes","describe"],
   docker:["info","containers","images","networks","volumes","diskUsage","stats","logs","inspect","processes"],
@@ -309,6 +316,7 @@ function DevopsVisualWorkspace({kind,activeView,data,search,available}:{kind:"ku
 }
 export default function Home(){
   const [view,setView]=useState<View>("studio");
+  const [workspaceWide,setWorkspaceWide]=useState(true);
   const [environment,setEnvironment]=useState<Environment>("Production");
   const [agentToken,setAgentToken]=useState("");
   const [agentState,setAgentState]=useState<"pairing"|"online"|"offline">("pairing");
@@ -481,6 +489,7 @@ export default function Home(){
   const sshStreams=useRef<Record<string,AbortController>>({});
 
   const notify=(message:string)=>{setToast("");window.setTimeout(()=>setToast(message),10)};
+  const toggleWorkspaceWide=()=>setWorkspaceWide(current=>{const next=!current;localStorage.setItem("dbops.workspace-wide.v1",String(next));notify(next?"Wide workspace enabled":"Standard workspace restored");return next});
   const fingerprint=(value=form,credentialId=activeCredentialId)=>JSON.stringify({...value,password:credentialId?"vault":Boolean(value.password),credentialId});
   const readyCount=Object.values(adapters).filter(adapter=>adapter.available).length;
   const activeAdapter=adapters[form.engine];
@@ -488,6 +497,20 @@ export default function Home(){
   const filteredCatalog=useMemo(()=>catalog.filter(item=>`${item.schema} ${item.name} ${item.type}`.toLowerCase().includes(catalogFilter.toLowerCase())).slice(0,500),[catalog,catalogFilter]);
   const filteredResultRows=useMemo(()=>{if(!result?.columns.length)return[];const needle=resultFilter.trim().toLowerCase();return (needle?result.rows.filter(row=>row.some(cell=>String(cell??"").toLowerCase().includes(needle))):result.rows).slice(0,1000)},[result,resultFilter]);
   const resultStats=useMemo(()=>{if(!result?.columns.length)return{rows:0,columns:0,cells:0,nulls:0};const nulls=result.rows.reduce((total,row)=>total+row.filter(cell=>cell===null).length,0);return{rows:result.rows.length,columns:result.columns.length,cells:result.rows.length*result.columns.length,nulls}},[result]);
+  const sqlReview=useMemo(()=>{
+    const text=sql.replace(/--.*$/gm,"").replace(/\/\*[\s\S]*?\*\//g,"").trim();
+    const classification=(text.match(/^\s*([a-z]+)/i)?.[1]||"empty").toUpperCase();
+    const readOnly=/^(select|with|values|show|describe|desc|explain)\b/i.test(text);
+    const destructive=/\b(drop|truncate|delete|alter|grant|revoke)\b/i.test(text);
+    const mutating=/\b(insert|update|merge|replace|create|drop|truncate|delete|alter|grant|revoke|call|execute)\b/i.test(text);
+    const statements=text.split(";").filter(item=>item.trim()).length;
+    const bounded=/\b(limit\s+\d+|fetch\s+(first|next)\s+\d+\s+rows|top\s*\(?\s*\d+|rownum\s*<=?\s*\d+)\b/i.test(text);
+    const wildcard=/\bselect\s+(distinct\s+)?\*/i.test(text);
+    const bindCount=(text.match(/(?::[a-z_]\w*|\$\d+|@[a-z_]\w*|\?)/gi)||[]).length;
+    const score=Math.max(0,100-(destructive?55:mutating?28:0)-(statements>1?12:0)-(readOnly&&!bounded?14:0)-(wildcard?7:0));
+    const severity=destructive?"danger":mutating||statements>1?"warning":readOnly&&!bounded?"notice":"safe";
+    return {classification,readOnly,destructive,mutating,statements,bounded,wildcard,bindCount,score,severity};
+  },[sql]);
   const cancelConnectionPanelHide=()=>{if(connectionPanelTimer.current!==null){window.clearTimeout(connectionPanelTimer.current);connectionPanelTimer.current=null}};
   const openConnectionPanel=()=>{cancelConnectionPanelHide();setConnectionPanelOpen(true)};
   const scheduleConnectionPanelHide=()=>{cancelConnectionPanelHide();connectionPanelTimer.current=window.setTimeout(()=>setConnectionPanelOpen(false),700)};
@@ -510,6 +533,7 @@ export default function Home(){
 
   useEffect(()=>{
     const storedKeepPass=localStorage.getItem("dbops.keep-pass.v1");if(storedKeepPass!==null)setKeepPass(storedKeepPass!=="false");
+    const storedWorkspaceWide=localStorage.getItem("dbops.workspace-wide.v1");if(storedWorkspaceWide!==null)setWorkspaceWide(storedWorkspaceWide!=="false");
     try{const stored=JSON.parse(localStorage.getItem("dbops.connection.profiles.v1")||"[]");if(Array.isArray(stored))setProfiles(stored)}catch{/* local preference only */}
     const pair=async()=>{
       try{
@@ -533,7 +557,7 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
   useEffect(()=>{localStorage.setItem("dbops.sql.scripts.v1",JSON.stringify(savedSqlScripts.slice(0,50)))},[savedSqlScripts]);
   useEffect(()=>()=>{if(recorderTimer.current)window.clearInterval(recorderTimer.current);if(connectionPanelTimer.current)window.clearTimeout(connectionPanelTimer.current);Object.values(sshStreams.current).forEach(controller=>controller.abort())},[]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(""),3800);return()=>window.clearTimeout(timer)},[toast]);
-  useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setCommandOpen(value=>!value)}if(event.key==="Escape")setCommandOpen(false)};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setCommandOpen(value=>!value)}if((event.ctrlKey||event.metaKey)&&event.shiftKey&&event.key.toLowerCase()==="f"){event.preventDefault();setWorkspaceWide(current=>{const next=!current;localStorage.setItem("dbops.workspace-wide.v1",String(next));return next})}if(event.key==="Escape")setCommandOpen(false)};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
 
   const updateSqlText=(value:string,engine=form.engine)=>{setSql(value);setSqlTabs(items=>items.map(tab=>tab.id===activeSqlTabId?{...tab,content:value,engine,dirty:true,cursor:editorRef.current?.selectionStart||0}:tab))};
   const switchSqlTab=(id:string)=>{const tab=sqlTabs.find(item=>item.id===id);if(!tab)return;if(tab.engine!==form.engine&&adapterDefaults[tab.engine]){const defaults=adapterDefaults[tab.engine];setForm(value=>({...value,engine:tab.engine,port:defaults.port,database:defaults.database,authMode:defaults.authMode,password:""}));setActiveCredentialId("");setConnectionState("idle");setConnectionFingerprint("");setCatalog([])}setActiveSqlTabId(id);setSql(tab.content);setCompletion({items:[],start:0,end:0});setResult(null);setResultFilter("")};
@@ -630,6 +654,18 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     finally{setQueryRunning(false)}
   };
   const formatSql=()=>{const keys=["select","from","where","join","left join","group by","order by","having","limit","with","union all"];let text=sql.trim().replace(/\s+/g," ");keys.forEach(key=>{text=text.replace(new RegExp(`\\b${key.replace(" ","\\s+")}\\b`,"gi"),match=>`\n${match.toUpperCase()}`)});updateSqlText(text.trim())};
+  const applySafeRowLimit=()=>{
+    if(!sqlReview.readOnly)return notify("The row guard is available only for read-only SQL");
+    if(sqlReview.bounded)return notify("This worksheet already has an explicit row boundary");
+    const statement=sql.trim().replace(/;\s*$/,"");
+    const guarded=form.engine==="sqlserver"
+      ?statement.replace(/^(\s*select\s+)(distinct\s+)?/i,(_,select,distinct="")=>`${select}${distinct}TOP (100) `)
+      :form.engine==="oracle"
+        ?`${statement}\nFETCH FIRST 100 ROWS ONLY`
+        :`${statement}\nLIMIT 100`;
+    updateSqlText(`${guarded};`);notify("Engine-aware 100-row guard added");
+  };
+  const openSlowSqlDiagnostics=()=>{setStudioTool("diagnostics");setDiagnosticMode("incident");setIncidentPlaybook("slow-sql");notify("Slow SQL incident workflow opened; add the engine statement identifier when available")};
   const updateCompletion=(value:string,cursor:number)=>{updateSqlText(value);const token=value.slice(0,cursor).match(/[A-Za-z0-9_.$]+$/)?.[0]||"";if(token.length<2)return setCompletion({items:[],start:cursor,end:cursor});const live=catalog.map(item=>({label:item.schema?`${item.schema}.${item.name}`:item.name,detail:`${item.type} · live catalog`,insert:item.schema?`${item.schema}.${item.name}`:item.name}));const base=[...sqlKeywords.map(word=>({label:word,detail:"SQL keyword",insert:`${word} `})),...live];const items=base.filter(item=>item.label.toLowerCase().includes(token.toLowerCase())).slice(0,8);setCompletion({items,start:cursor-token.length,end:cursor})};
   const acceptCompletion=(item:Completion)=>{const next=sql.slice(0,completion.start)+item.insert+sql.slice(completion.end);updateSqlText(next);setCompletion({items:[],start:0,end:0});requestAnimationFrame(()=>{const cursor=completion.start+item.insert.length;editorRef.current?.focus();editorRef.current?.setSelectionRange(cursor,cursor)})};
   const exportResult=(kind:"csv"|"json")=>{if(!result)return;const objects=result.rows.map(row=>Object.fromEntries(result.columns.map((column,index)=>[column,row[index]])));const content=kind==="csv"?[result.columns.map(csvCell).join(","),...result.rows.map(row=>row.map(csvCell).join(","))].join("\r\n"):JSON.stringify(objects.length?objects:{output:result.raw,messages:result.stderr},null,2);download(`dbops-${environment.toLowerCase()}-${form.engine}.${kind}`,content,kind==="csv"?"text/csv":"application/json")};
@@ -831,6 +867,18 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
     }catch(error){const message=error instanceof Error?error.message:"DevOps inspection failed";setDevopsData({ok:false,error:message});notify(message)}
     finally{setDevopsBusy(false)}
   };
+  const runGuidedOps=async(pack:GuidedOpsPack)=>{
+    setDevopsBusy(true);setDevopsData(null);
+    try{
+      let data:AnyResult=null;
+      if(pack==="cluster-triage"){setDevopsMode("kubernetes");setKubeView("events");data=await agentCall("/api/devops/kubernetes-dashboard",{method:"POST",body:JSON.stringify({context:kubeContext.trim(),namespace:kubeNamespace.trim()})})}
+      else if(pack==="container-pressure"){setDevopsMode("docker");setDockerView("overview");data=await agentCall("/api/devops/docker-dashboard",{method:"POST",body:"{}"})}
+      else if(pack==="delivery-failure"){setDevopsMode("github");setGitSource("github");setGitView("workflows");data=await collectToolWorkspace("github",["status","workflows","pullRequests"],gitRepository)}
+      else{setDevopsMode("ansible");setAnsibleView("configuration");data=await collectToolWorkspace("ansible",["config","inventory","graph"],"",ansibleCwd)}
+      setDevopsData(data);notify("Guided read-only operations pack completed");
+    }catch(error){const message=error instanceof Error?error.message:"Guided operations pack failed";setDevopsData({ok:false,error:message});notify(message)}
+    finally{setDevopsBusy(false)}
+  };
   const runContainerChange=async(preview:boolean)=>{
     if(!changeTarget.trim())return notify("Enter the deployment, pod, or container target");
     if(!preview&&!changeReference.trim())return notify("Enter an approved change or incident reference");
@@ -971,7 +1019,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
   };  const saveTuningRules=async()=>{
     try{const data=await agentCall("/api/investigation/rules",{method:"POST",body:JSON.stringify({rules:investigationStore.rules||[]})});setInvestigationStore(data.store);notify("Recommendation thresholds saved")}
     catch(error){notify(error instanceof Error?error.message:"Tuning rules could not be saved")}
-  };  return <main className="ops-shell">
+  };  return <main className={`ops-shell ${workspaceWide?"workspace-wide":""}`}>
     <aside className="ops-rail">
       <div className="ops-brand"><span>DB</span><div><b>DB Operations</b><small>Studio</small></div></div>
       <label className="environment-picker"><span>ENVIRONMENT</span><select value={environment} onChange={event=>selectEnvironment(event.target.value as Environment)}>{environments.map(item=><option key={item}>{item}</option>)}</select></label>
@@ -981,7 +1029,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
     </aside>
 
     <section className="ops-app">
-      <header className="ops-topbar"><div><span>DB Operations Studio</span><b>/</b><strong>{nav.find(item=>item.id===view)?.label}</strong></div><button onClick={()=>setCommandOpen(true)}>⌕ <span>Search workspace</span><kbd>Ctrl K</kbd></button><aside><label className={keepPass?"keep-pass-global active":"keep-pass-global"} title="Remember DB and SSH credentials only in volatile local-agent memory"><input type="checkbox" checked={keepPass} onChange={event=>changeKeepPass(event.target.checked)}/><i/><span><b>Keep pass</b><small>{keepPass?"Agent memory":"Disabled"}</small></span></label><span className={agentState+" agent-status"}><i/>{agentState==="online"?"Agent online":"Agent offline"}</span></aside></header>
+      <header className="ops-topbar"><div><span>DB Operations Studio</span><b>/</b><strong>{nav.find(item=>item.id===view)?.label}</strong></div><button onClick={()=>setCommandOpen(true)}>⌕ <span>Search workspace</span><kbd>Ctrl K</kbd></button><aside><label className={keepPass?"keep-pass-global active":"keep-pass-global"} title="Remember DB and SSH credentials only in volatile local-agent memory"><input type="checkbox" checked={keepPass} onChange={event=>changeKeepPass(event.target.checked)}/><i/><span><b>Keep pass</b><small>{keepPass?"Agent memory":"Disabled"}</small></span></label><button className={workspaceWide?"workspace-wide-toggle active":"workspace-wide-toggle"} onClick={toggleWorkspaceWide} title="Toggle wide workspace (Ctrl+Shift+F)"><i>&lt;&gt;</i><span><b>Wide canvas</b><small>{workspaceWide?"Expanded":"Standard"}</small></span></button><span className={agentState+" agent-status"}><i/>{agentState==="online"?"Agent online":"Agent offline"}</span></aside></header>
       <div className="ops-scroll">
         {view==="studio"&&<div className="ops-view">
           <header className="studio-heading"><div><p>UNIFIED DATABASE + DEVOPS OPERATIONS</p><h1>DB Studio</h1><span>Run SQL, diagnose performance, analyze logs and traces, and inspect delivery platforms from one shared environment context.</span></div><div><span><b>{readyCount||"—"}</b><small>connectors ready</small></span><span><b>50</b><small>tuning checks</small></span><span><b>{Object.values(toolInventory).filter(tool=>tool.available).length}</b><small>DevOps tools ready</small></span></div></header>
@@ -1021,6 +1069,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
               <div className="ide-toolbar"><button className="run" onClick={()=>runSql("selected")} disabled={queryRunning}>{queryRunning?"Running…":"▶ Run selected"}</button><button onClick={()=>runSql("all")} disabled={queryRunning}>Run all</button><button onClick={()=>runSql("explain")} disabled={queryRunning}>Explain</button><span className="toolbar-separator"/><button onClick={formatSql}>Format SQL</button><button onClick={saveEditorSession}>Save workspace</button><button onClick={saveCurrentScript}>Save script</button><label className="sql-import">Import SQL<input type="file" accept=".sql,text/sql,text/plain" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;if(file.size>500000)return notify("SQL import is limited to 500 KB");updateSqlText(await file.text());event.target.value=""}}/></label><button onClick={()=>updateSqlText(sqlSamples[form.engine]||"SELECT *\nFROM table_name\nLIMIT 50;")}>Sample</button><span className="autocomplete-status">Autocomplete <i className="switch-on"/></span><label className={allowWrites?"write-unlock active":"write-unlock"}><input type="checkbox" checked={allowWrites} onChange={event=>setAllowWrites(event.target.checked)}/><i/>Unlock writes</label></div>
               <div className={`sql-workbench ${sqlInspectorOpen?"inspector-open":""}`}><div className="sql-workbench-main">
                 <div className="worksheet-context"><span><b>{adapterDefaults[form.engine].name}</b><small>{environment} · {form.database||"database not set"}</small></span><span><b>{sql.split(/\s+/).filter(Boolean).length}</b><small>tokens</small></span><span><b>{sql.split(/\r?\n/).length}</b><small>lines</small></span><em>Ctrl+Enter selection · Ctrl+Shift+Enter all</em></div>
+                <section className={`sql-review-strip ${sqlReview.severity}`}><header><span>SQL GUARD</span><b>{sqlReview.score}/100</b></header><div><span><i/>{sqlReview.classification}</span><span><i/>{sqlReview.readOnly?"Read only":"Write capable"}</span><span><i/>{sqlReview.bounded?"Row bounded":"No row limit"}</span><span><i/>{sqlReview.statements} statement{sqlReview.statements===1?"":"s"}</span><span><i/>{sqlReview.bindCount} bind{sqlReview.bindCount===1?"":"s"}</span>{sqlReview.wildcard&&<span><i/>Wildcard select</span>}</div><aside><button onClick={applySafeRowLimit} disabled={!sqlReview.readOnly||sqlReview.bounded}>Add 100-row guard</button><button onClick={openSlowSqlDiagnostics}>SQL diagnostics &gt;</button></aside></section>
                 <div className="code-editor"><pre>{sql.split("\n").map((_,index)=>index+1).join("\n")}</pre><textarea ref={editorRef} spellCheck={false} value={sql} onChange={event=>updateCompletion(event.target.value,event.target.selectionStart)} onKeyDown={event=>{if((event.ctrlKey||event.metaKey)&&event.key==="Enter"){event.preventDefault();runSql(event.shiftKey?"all":"selected")}else if((event.ctrlKey||event.metaKey)&&event.altKey&&event.key.toLowerCase()==="o"){event.preventDefault();formatSql()}}} aria-label="Advanced SQL worksheet editor"/>{completion.items.length>0&&<div className="completion-menu">{completion.items.map(item=><button key={`${item.detail}-${item.label}`} onMouseDown={event=>event.preventDefault()} onClick={()=>acceptCompletion(item)}><i>{item.detail.startsWith("SQL")?"SQL":"DB"}</i><span><b>{item.label}</b><small>{item.detail}</small></span></button>)}</div>}</div>
                 <section className="result-panel"><header><div><button className={resultTab==="results"?"active":""} onClick={()=>setResultTab("results")}>Results {result&&<em>{result.rows.length}</em>}</button><button className={resultTab==="statistics"?"active":""} onClick={()=>setResultTab("statistics")}>Statistics</button><button className={resultTab==="messages"?"active":""} onClick={()=>setResultTab("messages")}>Messages</button></div><aside><label className="result-filter">⌕<input value={resultFilter} onChange={event=>setResultFilter(event.target.value)} placeholder="Filter loaded rows"/></label><button disabled={!result} onClick={()=>exportResult("csv")}>CSV</button><button disabled={!result} onClick={()=>exportResult("json")}>JSON</button><button disabled={!result} onClick={copyResult}>Copy</button><span>{result?`${result.durationMs} ms`:"Ready"}</span></aside></header>{resultTab==="statistics"?<div className="result-statistics">{[["Rows",resultStats.rows],["Columns",resultStats.columns],["Cells",resultStats.cells],["NULL values",resultStats.nulls]].map(([label,value])=><article key={String(label)}><b>{Number(value).toLocaleString()}</b><small>{label}</small></article>)}<section><b>Loaded-result scope</b><small>Statistics and filters operate on the bounded result returned by the local agent. No extra database compute is triggered.</small></section></div>:resultTab==="messages"?<pre className="message-output">{result?[result.stderr,result.raw].filter(Boolean).join("\n\n")||"Statement completed with no messages.":"Connection and execution messages appear here."}</pre>:result?.columns.length?<div className="dynamic-grid"><table><thead><tr><th>#</th>{result.columns.map(column=><th key={column}>{column}</th>)}</tr></thead><tbody>{filteredResultRows.map((row,rowIndex)=><tr key={rowIndex}><td>{rowIndex+1}</td>{row.map((cell,index)=><td key={index} title={cell==null?"NULL":String(cell)}>{cell==null?<em>NULL</em>:String(cell)}</td>)}</tr>)}</tbody></table>{resultFilter&&filteredResultRows.length===0&&<p className="grid-empty">No loaded rows match this filter.</p>}</div>:result?<pre className="message-output">{result.raw||result.stderr||"Statement completed with no output."}</pre>:<div className="result-placeholder"><span>SQL</span><b>Advanced worksheet ready</b><small>Select a statement or run the full worksheet. History, scripts, statistics, explain, export, and autocomplete are available.</small></div>}</section>
               </div>{sqlInspectorOpen&&<aside className="sql-inspector"><header><span><b>Worksheet inspector</b><small>Local workspace evidence</small></span><button onClick={()=>setSqlInspectorOpen(false)} aria-label="Close SQL inspector">×</button></header><nav>{(["history","scripts","context"] as SqlInspectorMode[]).map(mode=><button key={mode} className={sqlInspector===mode?"active":""} onClick={()=>setSqlInspector(mode)}>{mode==="history"?"Query history":mode==="scripts"?"Saved scripts":"Context"}</button>)}</nav>{sqlInspector==="history"&&<div className="sql-history">{queryHistory.length?queryHistory.map(entry=><article key={entry.id}><header><i className={entry.status}/><b>{entry.engine} · {entry.durationMs} ms</b><small>{new Date(entry.executedAt).toLocaleTimeString()}</small></header><code>{entry.sql}</code><footer><span>{entry.rowCount} rows · {entry.environment}</span><button onClick={()=>updateSqlText(entry.sql)}>Load</button><button onClick={()=>runSql("all",entry.sql)}>Run</button></footer></article>):<div className="sql-inspector-empty"><span>H</span><b>No query history</b><small>The last 25 executions stay on this browser.</small></div>}</div>}{sqlInspector==="scripts"&&<div className="sql-scripts"><button className="save-script" onClick={saveCurrentScript}>+ Save active worksheet</button>{savedSqlScripts.length?savedSqlScripts.map(script=><article key={script.id}><span><b>{script.name}</b><small>{script.engine} · {new Date(script.savedAt).toLocaleDateString()}</small></span><button onClick={()=>loadSqlScript(script)}>Open</button><button onClick={()=>setSavedSqlScripts(items=>items.filter(item=>item.id!==script.id))}>×</button></article>):<div className="sql-inspector-empty"><span>S</span><b>No saved scripts</b><small>Save reusable SQL without credentials or result data.</small></div>}</div>}{sqlInspector==="context"&&<div className="sql-context-card"><section><small>Environment</small><b>{environment}</b></section><section><small>Adapter</small><b>{adapterDefaults[form.engine].name}</b></section><section><small>Database / service</small><b>{form.database||"Not set"}</b></section><section><small>Identity</small><b>{form.username||"Not set"}</b></section><section><small>Access policy</small><b>{allowWrites?"Writes explicitly unlocked":"Read-only default"}</b></section><section><small>Connection</small><b>{connectionState}</b></section><div><b>Keyboard</b><span>Ctrl+Enter · Run selection</span><span>Ctrl+Shift+Enter · Run all</span><span>Ctrl+Alt+O · Format SQL</span><span>Double-click tab · Rename</span></div></div>}</aside>}</div>
@@ -1115,6 +1164,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
             {studioTool==="devops"&&<section className="studio-module panel-dark devops-studio">
               <header className="module-head"><div><i>DO</i><p><b>DevOps & Remote Operations</b><small>Visual Kubernetes, Docker, Git/GitHub, Ansible, delivery evidence and verified SSH</small></p></div><span>{Object.values(toolInventory).filter(tool=>tool.available).length}/{Object.keys(toolInventory).length||20} tools ready</span></header>
               <nav className="module-tabs devops-tabs">{(["kubernetes","docker","github","ansible","tooling","delivery","ssh","changes"] as DevopsMode[]).map(mode=><button key={mode} className={devopsMode===mode?"active":""} onClick={()=>{setDevopsMode(mode);setDevopsData(null);setDevopsSearch("")}}>{mode==="kubernetes"?"Kubernetes GUI":mode==="docker"?"Docker GUI":mode==="github"?"Git & GitHub":mode==="ansible"?"Ansible GUI":mode==="tooling"?"Toolbox":mode==="delivery"?"Delivery & Kafka":mode==="ssh"?"SSH terminals":"Controlled changes"}</button>)}</nav>
+              <section className="guided-ops-deck"><header><span>READ-ONLY RESPONSE PACKS</span><small>One click gathers a focused evidence set using the local allowlist.</small></header><div>{guidedOpsPacks.map(pack=><button key={pack.id} onClick={()=>runGuidedOps(pack.id)} disabled={devopsBusy}><i>{pack.mark}</i><span><b>{pack.title}</b><small>{pack.detail}</small></span><em>Run &gt;</em></button>)}</div></section>
               <div className="module-controls devops-controls">
                 <div className="devops-url-pass"><label className="devops-url-field">DEVOPS URL / DEEP LINK<input value={devopsUrl} onChange={event=>setDevopsUrl(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();passDevopsUrl()}}} placeholder="ssh://host:22 · GitHub · kubernetes://context/namespace · docker://container"/></label><label>SSH USERNAME<input autoComplete="username" value={devopsUsername} onChange={event=>setDevopsUsername(event.target.value)} placeholder="opsuser"/></label><label>SSH PASSWORD<input type="password" autoComplete="current-password" value={devopsPassword} onChange={event=>setDevopsPassword(event.target.value)} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();passDevopsUrl()}}}/></label><label className="devops-remember"><input type="checkbox" checked={keepPass} onChange={event=>changeKeepPass(event.target.checked)}/><span>Remember this agent session</span></label><button className="secondary" onClick={passDevopsUrl}>Pass & connect</button><small>SSH uses the username/password fields and connects after host-key verification. GitHub, Kubernetes, and Docker use approved local CLI contexts. Credentials inside URLs are blocked.</small></div>
                 {devopsMode==="kubernetes"&&<><div className="double-fields"><label>KUBE CONTEXT<input value={kubeContext} onChange={event=>setKubeContext(event.target.value)} placeholder="Current context when empty"/></label><label>NAMESPACE<input value={kubeNamespace} onChange={event=>setKubeNamespace(event.target.value)} placeholder="default"/></label></div><div className="ops-view-toolbar"><nav className="ops-view-switcher">{(["overview","workloads","compute","network","events"] as KubeGuiView[]).map(view=><button key={view} className={kubeView===view?"active":""} onClick={()=>setKubeView(view)}>{view}</button>)}</nav><label>SEARCH RESOURCES<input value={devopsSearch} onChange={event=>setDevopsSearch(event.target.value)} placeholder="pod, node, warning…"/></label></div><p>A Lens-style resource explorer for cluster health, workloads, services, metrics, and warning events.</p></>}
