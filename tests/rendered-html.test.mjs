@@ -144,3 +144,13 @@ test("adds Tabby and mRemoteNG-style remote operations features",async()=>{
   const css=await readFile(new URL("../app/ssh-workspace.css",import.meta.url),"utf8");
   for(const selector of [".ssh-quickbar",".ssh-tool-content.library",".ssh-library-toolbar",".ssh-folder-editor",".ssh-connection-tree",".ssh-inherit-defaults",".ssh-setting-toggle"])assert.equal(css.includes(selector),true,selector);
 });
+
+
+test("adds a unified command center and guided workflow to every Studio tab",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["Studio Command Center","Guided workflow","Search pages, Studio tabs and tools","FASTEST SAFE PATH","JUMP TO A TOOL","Alt 1-7","Paste mode available","Read-only by default"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["studioToolMeta","studioToolOrder","openStudioLocation","studioCommandQuery","studioRecents","dbops.studio.recents.v1","paletteResults","studioStatusTone"])assert.equal(source.includes(implementation),true,implementation);
+  for(const tool of ["Worksheet editor","Pipeline Builder","Incident command","Migration compare","Bottleneck analysis","Kubernetes GUI","Incident timeline"])assert.equal(source.includes(tool),true,tool);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".studio-context-strip",".studio-readiness",".command-palette.advanced",".command-results",".studio-guide-backdrop",".guide-steps",".guide-modes"])assert.equal(css.includes(selector),true,selector);
+});

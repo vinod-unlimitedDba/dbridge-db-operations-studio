@@ -57,7 +57,8 @@ test("wires one-click profiles without serializing browser secrets",async()=>{
     assert.equal(ssh.includes(behavior),true,behavior);
   }
   assert.equal(page.includes('type Profile = Omit<DbForm,"password">'),true);
-  assert.equal(ssh.includes("type Profile = { id:string; name:string; environment:string; host:string; port:string; username:string; authMethod:AuthMethod }"),true);
+  assert.equal(ssh.includes("type Profile = { id:string; name:string; environment:string; host:string; port:string; username:string; authMethod:AuthMethod;"),true);
+  for(const metadata of ["groupId?:string","favorite?:boolean","tags?:string[]","startupCommand?:string"])assert.equal(ssh.includes(metadata),true,metadata);
   assert.equal(/localStorage\.setItem\([^\n]+password/i.test(page),false);
   assert.equal(/localStorage\.setItem\([^\n]+password/i.test(ssh),false);
 });

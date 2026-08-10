@@ -5,9 +5,9 @@ import test from "node:test";
 test("integrates the advanced Tabby-style SSH workspace",async()=>{
   const source=await readFile(new URL("../app/components/SshWorkspace.tsx",import.meta.url),"utf8");
   for(const capability of [
-    "Secure terminal workspace","New SSH connection","Auto-hide","Hostname or IP","OpenSSH agent","Private key file","Password",
+    "Remote operations terminal","New SSH connection","Auto-hide","Hostname or IP","OpenSSH agent","Private key file","Password",
     "Read-only SFTP","Local port forwarding","Quick commands","Broadcast","Split:","Export log",
-    "Paste ${returns} command lines","Ctrl+Shift+D","Alt+1…8","Pinned host key verified on every connection","Trust and pin this host key?","No credential has been sent yet","Forget pinned key",
+    "Careful paste: send ${returns} command lines","Ctrl+Shift+D","Alt+1…8","Pinned host key verified on every connection","Trust and pin this host key?","No credential has been sent yet","Forget pinned key",
   ])assert.equal(source.includes(capability),true,capability);
   for(const endpoint of [
     "/api/terminal/ssh/preflight","/api/terminal/ssh/limits","/api/terminal/ssh/open",

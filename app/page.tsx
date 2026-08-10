@@ -32,9 +32,23 @@ type SqlHistoryEntry = { id:string; worksheetId:string; sql:string; status:"succ
 type SavedSqlScript = { id:string; name:string; sql:string; engine:string; savedAt:string };
 type SqlInspectorMode = "history" | "scripts" | "context";
 type GuidedOpsPack = "cluster-triage" | "container-pressure" | "delivery-failure" | "inventory-drift";
+type StudioModeEntry = { id:string; label:string; detail:string };
+type StudioToolMeta = { mark:string; label:string; summary:string; purpose:string; context:string; steps:string[]; modes:StudioModeEntry[] };
+type StudioCommandItem = { key:string; tool:StudioTool; mode?:string; mark:string; label:string; detail:string };
 
 const AGENT_URL="http://127.0.0.1:17865";
 const environments:Environment[]=["Production","SIT","UAT-Test","DEV"];
+
+const studioToolOrder:StudioTool[]=["sql","mongodb","diagnostics","observability","intelligence","devops","investigation"];
+const studioToolMeta:Record<StudioTool,StudioToolMeta>={
+  sql:{mark:"SQL",label:"SQL Workspace",summary:"Editor, catalog, results",purpose:"Write, review, explain, and run bounded SQL with live catalog context.",context:"Database connection",steps:["Choose an environment and database profile.","Use autocomplete or load a saved worksheet.","Review SQL Guard, then run selected SQL or Explain."],modes:[{id:"editor",label:"Worksheet editor",detail:"Tabbed SQL editor and result grid"},{id:"history",label:"Query history",detail:"Recent statements and execution evidence"},{id:"scripts",label:"Saved scripts",detail:"Device-local reusable SQL library"}]},
+  mongodb:{mark:"MDB",label:"MongoDB Studio",summary:"Compass, Sync, Mirror",purpose:"Explore collections, shape queries, inspect plans, and verify migrations.",context:"MongoDB connection",steps:["Connect to a MongoDB deployment.","Choose Documents, Pipeline Builder, Schema, or Explain.","Save useful queries locally or compare source and destination before cutover."],modes:[{id:"explorer",label:"Collections",detail:"Database and collection inventory"},{id:"documents",label:"Documents",detail:"Bounded filters, projections, and sort"},{id:"aggregations",label:"Pipeline Builder",detail:"Read-only aggregation workflow"},{id:"schema",label:"Schema",detail:"Sampled field and type analysis"},{id:"indexes",label:"Indexes",detail:"Index inventory and usage evidence"},{id:"validation",label:"Validation",detail:"Collection validation rules"},{id:"explain",label:"Explain",detail:"Query plan and scan ratio"},{id:"performance",label:"Performance",detail:"Current operations and server pressure"},{id:"sync",label:"Sync & Mirror",detail:"mongosync control and verification"}]},
+  diagnostics:{mark:"DX",label:"SQL Diagnostics",summary:"Incidents, plans, X-Ray",purpose:"Start from a symptom and collect engine-native evidence before recommending action.",context:"Supported database connection",steps:["Choose the incident symptom or diagnostic pack.","Add a statement identifier when one is available.","Run the read-only collector and review ranked findings plus evidence gaps."],modes:[{id:"incident",label:"Incident command",detail:"Symptom-driven correlated report"},{id:"health",label:"Health snapshot",detail:"Fast engine health evidence"},{id:"check",label:"Tuning check",detail:"Targeted diagnostic collector"},{id:"statement",label:"Statement evidence",detail:"Workload and execution context"},{id:"recommend",label:"Recommendations",detail:"Ranked safe next actions"},{id:"runtime",label:"Runtime workbench",detail:"CPU and memory trace capture"},{id:"deepdive",label:"Engine deep dive",detail:"Engine-native bottleneck analysis"},{id:"engines",label:"Database packs",detail:"Six engine-specific packs"},{id:"xray",label:"Oracle SQL_ID X-Ray",detail:"Oracle statement investigation"},{id:"plans",label:"Plans & regression",detail:"Plan capture and comparison"},{id:"recorder",label:"Flight recorder",detail:"Time-series incident evidence"},{id:"rules",label:"Tuning thresholds",detail:"Recommendation policy controls"}]},
+  observability:{mark:"LG",label:"Logs & Traces",summary:"Compare, telemetry, TKPROF",purpose:"Bring logs, traces, and telemetry into one bounded comparison and analysis workspace.",context:"Paste locally or pair the agent",steps:["Choose pasted, local, remote, or cloud evidence.","Set the time window and source scope.","Analyze, compare, then export the redline or evidence report."],modes:[{id:"compare",label:"Migration compare",detail:"DDL, row, and log redline"},{id:"native",label:"Native database logs",detail:"Engine-aware log parsing"},{id:"local",label:"Local files",detail:"Analyze a file on this laptop"},{id:"remote",label:"Remote tail",detail:"Bounded SSH log collection"},{id:"trace",label:"Trace analysis",detail:"CPU, memory, and I/O hints"},{id:"telemetry",label:"Cloud telemetry",detail:"Provider metric evidence"},{id:"tkprof",label:"Oracle TKPROF",detail:"Oracle trace formatting"}]},
+  intelligence:{mark:"AI",label:"Engine Intelligence",summary:"Six engines, plans, HA",purpose:"Run engine-aware performance, plan, resilience, and replication analysis packs.",context:"Supported database connection",steps:["Select the database engine and analysis pack.","Provide a statement identifier for focused X-Ray workflows.","Run the pack and validate recommendations against collected evidence."],modes:[{id:"overview",label:"Pack overview",detail:"Capabilities and safety boundary"},{id:"bottleneck",label:"Bottleneck analysis",detail:"Engine-native resource evidence"},{id:"xray",label:"Statement X-Ray",detail:"Focused statement diagnosis"},{id:"plans",label:"Plans & regression",detail:"Execution plan comparison"},{id:"resilience",label:"HA & replication",detail:"Availability and replica health"},{id:"goldengate",label:"Oracle GoldenGate",detail:"Lag and process diagnosis"}]},
+  devops:{mark:"DO",label:"DevOps & Remote",summary:"Platform, delivery, SSH",purpose:"Inspect clusters, containers, delivery systems, configuration, and remote hosts.",context:"Local agent and CLI context",steps:["Choose a platform and verify the active context.","Refresh the read-only visual workspace or open a saved remote profile.","Inspect evidence first; controlled changes require confirmation and an audit reference."],modes:[{id:"kubernetes",label:"Kubernetes GUI",detail:"Lens-style cluster cockpit"},{id:"docker",label:"Docker GUI",detail:"Containers, images, networks, logs"},{id:"github",label:"Git & GitHub",detail:"Repositories, PRs, actions, graph"},{id:"ansible",label:"Ansible GUI",detail:"Inventory and configuration"},{id:"tooling",label:"Tool explorer",detail:"Cloud and platform CLI evidence"},{id:"delivery",label:"Delivery",detail:"Pipelines, Kafka, topology"},{id:"ssh",label:"SSH terminal",detail:"Tabbed remote operations"},{id:"changes",label:"Controlled changes",detail:"Previewed and audited actions"}]},
+  investigation:{mark:"IR",label:"Investigation",summary:"Recorder, timeline, runbooks",purpose:"Capture evidence, correlate events, execute guided checks, and preserve reusable knowledge.",context:"Local agent for live capture",steps:["Start a recording or open an incident timeline.","Correlate database, platform, and operator evidence.","Save a runbook, rule, or autofill profile for the next incident."],modes:[{id:"recorder",label:"Flight recorder",detail:"Capture time-series evidence"},{id:"timeline",label:"Incident timeline",detail:"Correlate evidence and notes"},{id:"runbooks",label:"Runbooks",detail:"Guided read-only checks"},{id:"rules",label:"Recommendation rules",detail:"Threshold and policy library"},{id:"library",label:"Local library",detail:"Saved profiles and artifacts"}]},
+};
 const nav:{id:View;label:string;mark:string}[]=[
   {id:"studio",label:"Operations Studio",mark:"DB"},
   {id:"runbooks",label:"Runbooks",mark:"R"},
@@ -356,6 +370,9 @@ export default function Home(){
   const [toast,setToast]=useState("");
   const [completion,setCompletion]=useState<{items:Completion[];start:number;end:number}>({items:[],start:0,end:0});
   const [commandOpen,setCommandOpen]=useState(false);
+  const [studioCommandQuery,setStudioCommandQuery]=useState("");
+  const [studioGuideOpen,setStudioGuideOpen]=useState(false);
+  const [studioRecents,setStudioRecents]=useState<string[]>([]);
   const [studioTool,setStudioTool]=useState<StudioTool>("sql");
   const [diagnosticMode,setDiagnosticMode]=useState<DiagnosticMode>("incident");
   const [diagnosticIdentifier,setDiagnosticIdentifier]=useState("");
@@ -566,11 +583,12 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
   useEffect(()=>{if(!agentToken)return;agentCall("/api/editor/session").then(data=>{const restored:SqlWorksheet[]=(data.session?.tabs||[]).map((tab:any,index:number)=>({id:String(tab.id||`tab-restored-${index}`),name:String(tab.name||`query_${index+1}.sql`),engine:String(tab.engine||form.engine),content:String(tab.content||""),dirty:false,cursor:Number(tab.cursor||0)}));if(!restored.length)return;const active=restored.find(tab=>tab.id===data.session.activeId)||restored[0];setSqlTabs(restored);setActiveSqlTabId(active.id);setSql(active.content)}).catch(()=>{})},[agentToken]);
   useEffect(()=>{try{const saved=JSON.parse(localStorage.getItem("dbops.mongodb.pipelines.v1")||"[]");if(Array.isArray(saved))setMongoPipelines(saved.slice(0,30))}catch{/* local pipeline library only */}},[]);
   useEffect(()=>{try{const history=JSON.parse(localStorage.getItem("dbops.sql.history.v1")||"[]");if(Array.isArray(history))setQueryHistory(history.slice(0,25));const scripts=JSON.parse(localStorage.getItem("dbops.sql.scripts.v1")||"[]");if(Array.isArray(scripts))setSavedSqlScripts(scripts.slice(0,50))}catch{/* device-local SQL library remains empty */}},[]);
+  useEffect(()=>{try{const recent=JSON.parse(localStorage.getItem("dbops.studio.recents.v1")||"[]");if(Array.isArray(recent))setStudioRecents(recent.filter(item=>typeof item==="string").slice(0,8))}catch{/* recent Studio locations are optional */}},[]);
   useEffect(()=>{localStorage.setItem("dbops.sql.history.v1",JSON.stringify(queryHistory.slice(0,25)))},[queryHistory]);
   useEffect(()=>{localStorage.setItem("dbops.sql.scripts.v1",JSON.stringify(savedSqlScripts.slice(0,50)))},[savedSqlScripts]);
   useEffect(()=>()=>{if(recorderTimer.current)window.clearInterval(recorderTimer.current);if(connectionPanelTimer.current)window.clearTimeout(connectionPanelTimer.current);Object.values(sshStreams.current).forEach(controller=>controller.abort())},[]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(""),3800);return()=>window.clearTimeout(timer)},[toast]);
-  useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setCommandOpen(value=>!value)}if((event.ctrlKey||event.metaKey)&&event.shiftKey&&event.key.toLowerCase()==="f"){event.preventDefault();setWorkspaceWide(current=>{const next=!current;localStorage.setItem("dbops.workspace-wide.v1",String(next));return next})}if(event.key==="Escape")setCommandOpen(false)};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[]);
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){event.preventDefault();setStudioCommandQuery("");setCommandOpen(value=>!value)}if((event.ctrlKey||event.metaKey)&&event.shiftKey&&event.key.toLowerCase()==="f"){event.preventDefault();setWorkspaceWide(current=>{const next=!current;localStorage.setItem("dbops.workspace-wide.v1",String(next));return next})}if(event.altKey&&!event.ctrlKey&&!event.metaKey&&/^[1-7]$/.test(event.key)){event.preventDefault();openStudioLocation(studioToolOrder[Number(event.key)-1])}if(event.key==="Escape"){setCommandOpen(false);setStudioGuideOpen(false)}};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key)},[form.engine]);
 
   const updateSqlText=(value:string,engine=form.engine)=>{setSql(value);setSqlTabs(items=>items.map(tab=>tab.id===activeSqlTabId?{...tab,content:value,engine,dirty:true,cursor:editorRef.current?.selectionStart||0}:tab))};
   const switchSqlTab=(id:string)=>{const tab=sqlTabs.find(item=>item.id===id);if(!tab)return;if(tab.engine!==form.engine&&adapterDefaults[tab.engine]){const defaults=adapterDefaults[tab.engine];setForm(value=>({...value,engine:tab.engine,port:defaults.port,database:defaults.database,authMode:defaults.authMode,password:""}));setActiveCredentialId("");setConnectionState("idle");setConnectionFingerprint("");setCatalog([])}setActiveSqlTabId(id);setSql(tab.content);setCompletion({items:[],start:0,end:0});setResult(null);setResultFilter("")};
@@ -662,8 +680,8 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     if(allowWrites&&!window.confirm("Write mode is unlocked. Continue only if you are authorized to modify this database."))return;
     if(connectionState!=="connected"||connectionFingerprint!==fingerprint()){const connected=await connect(false);if(!connected)return}
     setQueryRunning(true);setResult(null);setResultFilter("");setResultTab("results");const started=Date.now();
-    try{const data=await agentCall("/api/sql/run",{method:"POST",body:JSON.stringify({...payload(),sql:statement,allowWrites,timeoutMs:60000})});const parsed=parseOutput(data.stdout||"",data.stderr||"",data.durationMs||0);setResult(parsed);setQueryHistory(items=>[{id:`run-${Date.now().toString(36)}`,worksheetId:activeSqlTabId,sql:statement,status:"success",durationMs:data.durationMs||Date.now()-started,rowCount:parsed.rows.length,executedAt:new Date().toISOString(),engine:form.engine,environment},...items].slice(0,25));setSqlTabs(items=>items.map(tab=>tab.id===activeSqlTabId?{...tab,dirty:false}:tab));notify(`${mode==="explain"?"Explain":"SQL"} completed in ${data.durationMs||0} ms`)}
-    catch(error){const message=error instanceof Error?error.message:"SQL execution failed";const durationMs=Date.now()-started;setResult({columns:[],rows:[],raw:"",stderr:message,durationMs});setResultTab("messages");setQueryHistory(items=>[{id:`run-${Date.now().toString(36)}`,worksheetId:activeSqlTabId,sql:statement,status:"failed",durationMs,rowCount:0,executedAt:new Date().toISOString(),engine:form.engine,environment},...items].slice(0,25));notify(message)}
+    try{const data=await agentCall("/api/sql/run",{method:"POST",body:JSON.stringify({...payload(),sql:statement,allowWrites,timeoutMs:60000})});const parsed=parseOutput(data.stdout||"",data.stderr||"",data.durationMs||0);setResult(parsed);setQueryHistory(items=>[{id:`run-${Date.now().toString(36)}`,worksheetId:activeSqlTabId,sql:statement,status:"success" as const,durationMs:data.durationMs||Date.now()-started,rowCount:parsed.rows.length,executedAt:new Date().toISOString(),engine:form.engine,environment},...items].slice(0,25));setSqlTabs(items=>items.map(tab=>tab.id===activeSqlTabId?{...tab,dirty:false}:tab));notify(`${mode==="explain"?"Explain":"SQL"} completed in ${data.durationMs||0} ms`)}
+    catch(error){const message=error instanceof Error?error.message:"SQL execution failed";const durationMs=Date.now()-started;setResult({columns:[],rows:[],raw:"",stderr:message,durationMs});setResultTab("messages");setQueryHistory(items=>[{id:`run-${Date.now().toString(36)}`,worksheetId:activeSqlTabId,sql:statement,status:"failed" as const,durationMs,rowCount:0,executedAt:new Date().toISOString(),engine:form.engine,environment},...items].slice(0,25));notify(message)}
     finally{setQueryRunning(false)}
   };
   const formatSql=()=>{const keys=["select","from","where","join","left join","group by","order by","having","limit","with","union all"];let text=sql.trim().replace(/\s+/g," ");keys.forEach(key=>{text=text.replace(new RegExp(`\\b${key.replace(" ","\\s+")}\\b`,"gi"),match=>`\n${match.toUpperCase()}`)});updateSqlText(text.trim())};
@@ -1047,7 +1065,50 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
   };  const saveTuningRules=async()=>{
     try{const data=await agentCall("/api/investigation/rules",{method:"POST",body:JSON.stringify({rules:investigationStore.rules||[]})});setInvestigationStore(data.store);notify("Recommendation thresholds saved")}
     catch(error){notify(error instanceof Error?error.message:"Tuning rules could not be saved")}
-  };  return <main className={`ops-shell ${workspaceWide?"workspace-wide":""}`}>
+  };
+  function openStudioLocation(tool:StudioTool,mode?:string){
+    setView("studio");
+    setStudioTool(tool);
+    if(tool==="mongodb"&&form.engine!=="mongodb")selectEngine("mongodb");
+    if(tool==="sql"){
+      if(mode==="history"||mode==="scripts"){setSqlInspector(mode);setSqlInspectorOpen(true)}
+      else if(mode==="editor")setSqlInspectorOpen(false);
+    }
+    if(tool==="mongodb"&&mode)setMongoMode(mode as MongoMode);
+    if(tool==="diagnostics"&&mode)setDiagnosticMode(mode as DiagnosticMode);
+    if(tool==="observability"&&mode)setObserveMode(mode as ObserveMode);
+    if(tool==="intelligence"&&mode){setIntelligenceMode(mode as IntelligenceMode);setIntelligenceData(null)}
+    if(tool==="devops"&&mode)setDevopsMode(mode as DevopsMode);
+    if(tool==="investigation"&&mode)setInvestigationMode(mode as InvestigationMode);
+    const key=tool+(mode?":"+mode:"");
+    setStudioRecents(current=>{
+      const next=[key,...current.filter(item=>item!==key)].slice(0,8);
+      localStorage.setItem("dbops.studio.recents.v1",JSON.stringify(next));
+      return next;
+    });
+    setStudioCommandQuery("");
+    setCommandOpen(false);
+    setStudioGuideOpen(false);
+  }
+  const activeStudioMeta=studioToolMeta[studioTool];
+  const studioStatus=studioTool==="observability"
+    ?(agentState==="online"?"Agent online + paste mode":"Paste mode available")
+    :studioTool==="devops"||studioTool==="investigation"
+      ?(agentState==="online"?"Local agent ready":"Local agent required")
+      :(connectionState==="connected"?"Database connected":"Connection required");
+  const studioStatusTone=studioStatus.includes("ready")||studioStatus.includes("connected")||studioStatus.includes("available")||studioStatus.includes("online")?"ready":"attention";
+  const studioCommandItems:StudioCommandItem[]=studioToolOrder.flatMap(tool=>{
+    const meta=studioToolMeta[tool];
+    return [{key:tool,tool,label:meta.label,detail:meta.purpose,mark:meta.mark},...meta.modes.map(mode=>({key:tool+":"+mode.id,tool,mode:mode.id,label:mode.label,detail:mode.detail,mark:meta.mark}))];
+  });
+  const recentStudioItems=studioRecents.map(key=>studioCommandItems.find(item=>item.key===key)).filter(Boolean) as StudioCommandItem[];
+  const commandNeedle=studioCommandQuery.trim().toLowerCase();
+  const paletteResults=(commandNeedle
+    ?studioCommandItems.filter(item=>(item.label+" "+item.detail+" "+studioToolMeta[item.tool].label).toLowerCase().includes(commandNeedle))
+    :[...recentStudioItems,...studioCommandItems.filter(item=>!item.mode)])
+    .filter((item,index,items)=>items.findIndex(candidate=>candidate.key===item.key)===index)
+    .slice(0,18);
+  return <main className={`ops-shell ${workspaceWide?"workspace-wide":""}`}>
     <aside className="ops-rail">
       <div className="ops-brand"><span>DB</span><div><b>DB Operations</b><small>Studio</small></div></div>
       <label className="environment-picker"><span>ENVIRONMENT</span><select value={environment} onChange={event=>selectEnvironment(event.target.value as Environment)}>{environments.map(item=><option key={item}>{item}</option>)}</select></label>
@@ -1063,14 +1124,12 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
           <header className="studio-heading"><div><p>UNIFIED DATABASE + DEVOPS OPERATIONS</p><h1>DB Studio</h1><span>Run SQL, diagnose performance, analyze logs and traces, and inspect delivery platforms from one shared environment context.</span></div><div><span><b>{readyCount||"—"}</b><small>connectors ready</small></span><span><b>50</b><small>tuning checks</small></span><span><b>{Object.values(toolInventory).filter(tool=>tool.available).length}</b><small>DevOps tools ready</small></span></div></header>
           {agentState!=="online"&&<section className="agent-warning"><b>Local database agent is not paired.</b><span>Start the local database agent on port 17865, then reload this page. Hosted copies cannot access laptop databases.</span></section>}
           <nav className="studio-tool-tabs" aria-label="Studio tools">
-            <button className={studioTool==="sql"?"active":""} onClick={()=>setStudioTool("sql")}><i>SQL</i><span><b>SQL Workspace</b><small>Editor, catalog, results</small></span></button>
-            <button className={studioTool==="mongodb"?"active":""} onClick={()=>{setStudioTool("mongodb");if(form.engine!=="mongodb")selectEngine("mongodb")}}><i>MDB</i><span><b>MongoDB Studio</b><small>Compass, Sync, Mirror</small></span></button>
-            <button className={studioTool==="diagnostics"?"active":""} onClick={()=>setStudioTool("diagnostics")}><i>DX</i><span><b>SQL Diagnostics</b><small>Full suite, plans, X-Ray</small></span></button>
-            <button className={studioTool==="observability"?"active":""} onClick={()=>setStudioTool("observability")}><i>LG</i><span><b>Logs & Traces</b><small>Logs, telemetry, TKPROF</small></span></button>
-            <button className={studioTool==="intelligence"?"active":""} onClick={()=>{setStudioTool("intelligence");setIntelligenceMode("overview");setIntelligenceData(null)}}><i>AI</i><span><b>Engine Intelligence</b><small>Six engines, X-Ray, plans, HA</small></span></button>
-            <button className={studioTool==="devops"?"active":""} onClick={()=>setStudioTool("devops")}><i>DO</i><span><b>DevOps & Remote</b><small>Platform, delivery, SSH</small></span></button>
-            <button className={studioTool==="investigation"?"active":""} onClick={()=>setStudioTool("investigation")}><i>IR</i><span><b>Investigation</b><small>Recorder, timeline, runbooks</small></span></button>
+            {studioToolOrder.map((tool,index)=>{const meta=studioToolMeta[tool];return <button key={tool} className={studioTool===tool?"active":""} onClick={()=>openStudioLocation(tool)} title={meta.purpose}><i>{meta.mark}</i><span><b>{meta.label}</b><small>{meta.summary}</small></span><kbd>Alt {index+1}</kbd></button>})}
           </nav>
+          <section className="studio-context-strip" aria-label="Active Studio context">
+            <div className="studio-context-title"><span>{activeStudioMeta.mark}</span><p><small>OPERATIONS STUDIO / {environment.toUpperCase()}</small><b>{activeStudioMeta.label}</b><em>{activeStudioMeta.purpose}</em></p></div>
+            <aside><span className={"studio-readiness "+studioStatusTone}><i/>{studioStatus}</span><button onClick={()=>{setStudioCommandQuery("");setCommandOpen(true)}}>Search tools <kbd>Ctrl K</kbd></button><button className="context-guide-button" onClick={()=>setStudioGuideOpen(true)}>Guided workflow <b>?</b></button></aside>
+          </section>
           <section className={`studio-grid ${studioTool==="devops"?"without-connection":connectionPanelOpen?"connection-open":"connection-collapsed"}`}>
             {studioTool!=="devops"&&(connectionPanelOpen?<aside className="db-connector panel-dark" onMouseEnter={cancelConnectionPanelHide} onMouseLeave={scheduleConnectionPanelHide} onFocusCapture={cancelConnectionPanelHide} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))scheduleConnectionPanelHide()}}>
               <header><div><span>01</span><p><b>Connection</b><small>Adapter-aware secure target</small></p></div><aside><em className={connectionState}>{connectionState}</em><button className="connection-collapse" onClick={()=>setConnectionPanelOpen(false)} aria-label="Auto-hide Connection panel">Hide</button></aside></header>
@@ -1232,8 +1291,20 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
         {view!=="studio"&&<div className="ops-view"><header className="simple-heading"><p>{view.toUpperCase()}</p><h1>{nav.find(item=>item.id===view)?.label}</h1><span>Operations Studio keeps database, platform, performance, and troubleshooting evidence in one local-first workspace.</span></header><section className="feature-cards">{view==="overview"&&[["15","Database connectors","Oracle, PostgreSQL, SQL Server, MongoDB and warehouses"],[String(readyCount||"—"),"Ready locally","Bundled drivers and approved local clients"],[String(profiles.length),"Saved profiles","Environment-scoped metadata without passwords"],["RO","Safety policy","Read-only SQL unless explicitly unlocked"]].map(card=><article key={card[1]}><span>{card[0]}</span><b>{card[1]}</b><small>{card[2]}</small></article>)}{view==="infrastructure"&&[["K8s","Cluster inventory","Nodes, workloads, services, events and resource pressure"],["Docker","Container visibility","Containers, images, networks, volumes, logs and inspect"],["SSH","Remote hosts","Verified host keys and environment-aware Linux profiles"]].map(card=><article key={card[0]}><span>{card[0]}</span><b>{card[1]}</b><small>{card[2]}</small></article>)}{view==="performance"&&[["CPU","Host signals","CPU, memory, I/O and anomaly hints"],["SQL","Statement analysis","Plans, waits, blockers and plan history"],["Trace","Runtime evidence","Database and application trace correlation"]].map(card=><article key={card[0]}><span>{card[0]}</span><b>{card[1]}</b><small>{card[2]}</small></article>)}{view==="runbooks"&&[["PG-014","PostgreSQL memory pressure","Guided evidence collection and safe response"],["ORA-022","Oracle redo waits","Wait, I/O and transport verification"],["HOST-003","Linux CPU saturation","Process, load, deployment and scaling checks"]].map(card=><article key={card[0]}><span>{card[0]}</span><b>{card[1]}</b><small>{card[2]}</small></article>)}</section><button className="primary" onClick={()=>setView("studio")}>Open DB Studio</button></div>}
       </div>
     </section>
-
-    {commandOpen&&<div className="command-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setCommandOpen(false)}><section className="command-palette"><label>⌕ <input autoFocus placeholder="Search workspace…"/></label>{nav.map(item=><button key={item.id} onClick={()=>{if(item.id==="runbooks"){setView("studio");setStudioTool("investigation");setInvestigationMode("runbooks")}else setView(item.id);setCommandOpen(false)}}><i>{item.mark}</i><span><b>Open {item.label}</b><small>Navigate to {item.label.toLowerCase()}</small></span><kbd>↵</kbd></button>)}</section></div>}
+    {commandOpen&&<div className="command-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setCommandOpen(false)}><section className="command-palette advanced" role="dialog" aria-label="Studio Command Center">
+      <header><label><span>&gt;</span><input autoFocus value={studioCommandQuery} onChange={event=>setStudioCommandQuery(event.target.value)} placeholder="Search pages, Studio tabs and tools..."/></label><kbd>ESC</kbd></header>
+      <div className="command-scope"><span>{commandNeedle?"MATCHING TOOLS":recentStudioItems.length?"RECENT + ALL STUDIOS":"ALL STUDIOS"}</span><small>{paletteResults.length} result{paletteResults.length===1?"":"s"} - try "explain", "SSH", "logs", or "runbook"</small></div>
+      <div className="command-results">{paletteResults.map(item=><button key={item.key} onClick={()=>openStudioLocation(item.tool,item.mode)}><i>{item.mark}</i><span><b>{item.label}</b><small>{item.mode?studioToolMeta[item.tool].label+" - "+item.detail:item.detail}</small></span><em>{item.mode?"OPEN TOOL":"OPEN STUDIO"}</em></button>)}{paletteResults.length===0&&<div className="command-empty"><b>No matching Studio tool</b><small>Try a database engine, operation, platform, or evidence type.</small></div>}</div>
+      <footer><span><kbd>Alt 1-7</kbd> switch Studio tabs</span><span><kbd>Ctrl Shift F</kbd> wide canvas</span><span><kbd>Esc</kbd> close</span></footer>
+    </section></div>}
+    {studioGuideOpen&&<div className="studio-guide-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setStudioGuideOpen(false)}><aside className="studio-guide" role="dialog" aria-label={activeStudioMeta.label+" guided workflow"}>
+      <header><div><span>{activeStudioMeta.mark}</span><p><small>GUIDED WORKFLOW</small><b>{activeStudioMeta.label}</b></p></div><button onClick={()=>setStudioGuideOpen(false)} aria-label="Close guided workflow">x</button></header>
+      <section className="guide-purpose"><small>WHAT THIS WORKSPACE DOES</small><p>{activeStudioMeta.purpose}</p><span>{activeStudioMeta.context}</span></section>
+      <section className="guide-steps"><small>FASTEST SAFE PATH</small>{activeStudioMeta.steps.map((step,index)=><article key={step}><span>{String(index+1).padStart(2,"0")}</span><p>{step}</p></article>)}</section>
+      <section className="guide-modes"><header><small>JUMP TO A TOOL</small><span>{activeStudioMeta.modes.length} available</span></header><div>{activeStudioMeta.modes.map(mode=><button key={mode.id} onClick={()=>openStudioLocation(studioTool,mode.id)}><b>{mode.label}</b><small>{mode.detail}</small><span>&gt;</span></button>)}</div></section>
+      <section className="guide-research"><small>WORKFLOW PATTERNS</small><p>Command search and recent navigation follow IDE patterns; saved queries, evidence history, and side-by-side analysis follow database and observability workbenches.</p><div><a href="https://code.visualstudio.com/docs/editing/userinterface" target="_blank" rel="noreferrer">VS Code UI</a><a href="https://www.mongodb.com/docs/compass/query/queries/" target="_blank" rel="noreferrer">Compass queries</a><a href="https://grafana.com/docs/grafana/latest/visualizations/explore/get-started-with-explore/" target="_blank" rel="noreferrer">Grafana Explore</a><a href="https://docs.k8slens.dev/k8slens/using-lens/hotbar/" target="_blank" rel="noreferrer">Lens Hotbar</a></div></section>
+      <footer><span>Read-only by default</span><button onClick={()=>{setStudioGuideOpen(false);setStudioCommandQuery("");setCommandOpen(true)}}>Open Studio Command Center</button></footer>
+    </aside></div>}
     {toast&&<div className="ops-toast"><i>✓</i>{toast}</div>}
   </main>
 }
