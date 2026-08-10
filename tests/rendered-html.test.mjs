@@ -126,3 +126,12 @@ test("expands the canvas and adds advanced SQL guard and guided DevOps packs",as
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   for(const selector of [".workspace-wide",".workspace-wide-toggle",".sql-review-strip",".guided-ops-deck"])assert.equal(css.includes(selector),true,selector);
 });
+
+test("adds an advanced read-only Lens-style Kubernetes operations cockpit",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["Lens-style cluster cockpit","Resource inspector","Live 15s","SECRETS EXCLUDED","Rollout status","KubernetesLensWorkspace","kubeAutoRefresh","runKubeInspection","storage","configuration","access"])assert.equal(source.includes(capability),true,capability);
+  const server=await readFile(new URL("../portable/server.mjs",import.meta.url),"utf8");
+  for(const implementation of ["Secret manifests are excluded from the Studio inspector","--tail=300","api-resources","persistentVolumeClaims","clusterRoleBindings","customResources"])assert.equal(server.includes(implementation),true,implementation);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".kube-lens-controls",".kube-view-strip",".kube-lens-shell",".kube-detail-panel",".kube-inspector-launcher"])assert.equal(css.includes(selector),true,selector);
+});

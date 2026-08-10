@@ -237,7 +237,7 @@ function validateAutofillProfile(input) {
 
 const toolDefinitions = {
   github: { command: "gh", versionArgs: ["--version"], actions: { status: true, repositories: true, pullRequests: true, workflows: true, issues: true, releases: true } },
-  kubernetes: { command: "kubectl", versionArgs: ["version", "--client"], actions: { cluster: true, namespaces: true, nodes: true, pods: true, deployments: true, services: true, events: true, topPods: true, topNodes: true, describe: true } },
+  kubernetes: { command: "kubectl", versionArgs: ["version", "--client"], actions: { cluster: true, namespaces: true, nodes: true, pods: true, deployments: true, services: true, events: true, topPods: true, topNodes: true, describe: true, manifest: true, logs: true, eventsFor: true, rollout: true, apiResources: true, auth: true } },
   docker: { command: "docker", versionArgs: ["--version"], actions: { info: true, containers: true, images: true, networks: true, volumes: true, diskUsage: true, stats: true, logs: true, inspect: true, processes: true } },
   kafka: { command: "kafka-topics.bat", versionArgs: ["--version"], actions: { topics: true, describeTopic: true, groups: true, describeGroup: true } },
   terraform: { command: "terraform", versionArgs: ["version"], actions: { version: true, providers: true, validate: true, outputs: true, state: true, workspace: true } },
@@ -1209,11 +1209,15 @@ function devopsCommand(input) {
   } else if (toolId === "kubernetes") {
     const context = devopsValue(input, "target", safeName, "Kubernetes context");
     const namespace = devopsValue(input, "secondary", /^[a-z0-9][a-z0-9.-]{0,62}$/, "Kubernetes namespace");
-    const resource = devopsValue(input, "scope", safeName, "Kubernetes resource", action === "describe");
-    const map = { cluster: ["cluster-info"], namespaces: ["get", "namespaces", "-o", "wide"], nodes: ["get", "nodes", "-o", "wide"], pods: ["get", "pods", "-o", "wide"], deployments: ["get", "deployments", "-o", "wide"], services: ["get", "services", "-o", "wide"], events: ["get", "events", "--sort-by=.lastTimestamp"], topPods: ["top", "pods"], topNodes: ["top", "nodes"], describe: ["describe", resource] };
+    const resourceActions = ["describe", "manifest", "logs", "eventsFor", "rollout"];
+    const resource = devopsValue(input, "scope", safeName, "Kubernetes resource", resourceActions.includes(action));
+    if (action === "manifest" && /^secrets?(?:\/|$)/i.test(resource)) throw new Error("Secret manifests are excluded from the Studio inspector");
+    if (action === "logs" && !/^(?:pods?|deployments?|statefulsets?|daemonsets?|jobs?)\/[a-z0-9][a-z0-9.-]{0,252}$/i.test(resource)) throw new Error("Logs require a pod or workload-controller resource");
+    if (action === "rollout" && !/^(?:deployments?|statefulsets?|daemonsets?)\/[a-z0-9][a-z0-9.-]{0,252}$/i.test(resource)) throw new Error("Rollout status requires a deployment, stateful set, or daemon set");
+    const map = { cluster: ["cluster-info"], namespaces: ["get", "namespaces", "-o", "wide"], nodes: ["get", "nodes", "-o", "wide"], pods: ["get", "pods", "-o", "wide"], deployments: ["get", "deployments", "-o", "wide"], services: ["get", "services", "-o", "wide"], events: ["get", "events", "--sort-by=.lastTimestamp"], topPods: ["top", "pods"], topNodes: ["top", "nodes"], describe: ["describe", resource], manifest: ["get", resource, "-o", "yaml"], logs: ["logs", resource, "--tail=300", "--timestamps=true"], eventsFor: ["events", "--for", resource], rollout: ["rollout", "status", resource, "--timeout=10s"], apiResources: ["api-resources", "--verbs=list,get", "-o", "wide"], auth: ["auth", "can-i", "--list"] };
     args = [...map[action]];
     if (context) args.push("--context", context);
-    if (!["cluster", "namespaces", "nodes", "topNodes"].includes(action)) args.push(namespace ? "-n" : "-A", ...(namespace ? [namespace] : []));
+    if (!["cluster", "namespaces", "nodes", "topNodes", "apiResources"].includes(action)) args.push(namespace ? "-n" : "-A", ...(namespace ? [namespace] : []));
   } else if (toolId === "docker") {
     const container = devopsValue(input, "target", safeName, "container or image", ["logs", "inspect", "processes"].includes(action));
     const map = { info: ["info"], containers: ["ps", "-a"], images: ["images"], networks: ["network", "ls"], volumes: ["volume", "ls"], diskUsage: ["system", "df"], stats: ["stats", "--no-stream"], logs: ["logs", "--tail", "300", container], inspect: ["inspect", container], processes: ["top", container] };
@@ -1332,11 +1336,35 @@ function kubernetesDashboardSpecs(input) {
   const scopeArgs = namespace ? ["-n", namespace] : ["-A"];
   const spec = (id, args, required = false) => ({ id, command: "kubectl", args: [...args, ...contextArgs], required, displayCommand: commandText("kubectl", [...args, ...contextArgs]) });
   return [
-    spec("nodes", ["get", "nodes", "-o", "json"], true),
-    spec("workloads", ["get", "deployments,pods,services", "-o", "json", ...scopeArgs], true),
+    spec("cluster", ["cluster-info"], true),
+    spec("namespaces", ["get", "namespaces", "-o", "wide"]),
+    spec("nodes", ["get", "nodes", "-o", "wide"], true),
+    spec("deployments", ["get", "deployments", "-o", "wide", ...scopeArgs], true),
+    spec("statefulSets", ["get", "statefulsets", "-o", "wide", ...scopeArgs]),
+    spec("daemonSets", ["get", "daemonsets", "-o", "wide", ...scopeArgs]),
+    spec("jobs", ["get", "jobs", "-o", "wide", ...scopeArgs]),
+    spec("cronJobs", ["get", "cronjobs", "-o", "wide", ...scopeArgs]),
+    spec("pods", ["get", "pods", "-o", "wide", ...scopeArgs], true),
+    spec("services", ["get", "services", "-o", "wide", ...scopeArgs]),
+    spec("ingresses", ["get", "ingresses", "-o", "wide", ...scopeArgs]),
+    spec("networkPolicies", ["get", "networkpolicies", "-o", "wide", ...scopeArgs]),
+    spec("endpoints", ["get", "endpointslices", "-o", "wide", ...scopeArgs]),
+    spec("storageClasses", ["get", "storageclasses", "-o", "wide"]),
+    spec("persistentVolumes", ["get", "persistentvolumes", "-o", "wide"]),
+    spec("persistentVolumeClaims", ["get", "persistentvolumeclaims", "-o", "wide", ...scopeArgs]),
+    spec("resourceQuotas", ["get", "resourcequotas", "-o", "wide", ...scopeArgs]),
+    spec("limitRanges", ["get", "limitranges", "-o", "wide", ...scopeArgs]),
+    spec("configMaps", ["get", "configmaps", "-o", "wide", ...scopeArgs]),
+    spec("serviceAccounts", ["get", "serviceaccounts", "-o", "wide", ...scopeArgs]),
+    spec("roles", ["get", "roles", "-o", "wide", ...scopeArgs]),
+    spec("roleBindings", ["get", "rolebindings", "-o", "wide", ...scopeArgs]),
+    spec("clusterRoles", ["get", "clusterroles", "-o", "wide"]),
+    spec("clusterRoleBindings", ["get", "clusterrolebindings", "-o", "wide"]),
+    spec("customResources", ["get", "customresourcedefinitions", "-o", "wide"]),
+    spec("apiResources", ["api-resources", "--verbs=list,get", "-o", "wide"]),
     spec("nodeMetrics", ["top", "nodes", "--no-headers"]),
     spec("podMetrics", ["top", "pods", "--no-headers", ...scopeArgs]),
-    spec("events", ["get", "events", "-o", "json", "--field-selector", "type=Warning", ...scopeArgs]),
+    spec("events", ["get", "events", "--sort-by=.lastTimestamp", ...scopeArgs]),
   ];
 }
 
