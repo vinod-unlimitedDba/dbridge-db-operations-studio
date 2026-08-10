@@ -135,3 +135,12 @@ test("adds an advanced read-only Lens-style Kubernetes operations cockpit",async
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   for(const selector of [".kube-lens-controls",".kube-view-strip",".kube-lens-shell",".kube-detail-panel",".kube-inspector-launcher"])assert.equal(css.includes(selector),true,selector);
 });
+
+test("adds Tabby and mRemoteNG-style remote operations features",async()=>{
+  const source=await readFile(new URL("../app/components/SshWorkspace.tsx",import.meta.url),"utf8");
+  for(const capability of ["Tabby-style Quick Connect","Remote connection manager","mRemoteNG-style folders","Inherit folder defaults","Careful paste","Startup command","Export JSON","Import JSON","Favorites","Connection tree"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["GROUP_KEY","quickConnectNow","resolvedProfile","applyGroupToForm","exportConnectionLibrary","importConnectionLibrary","dbops-remote-library-v1","startupCommand.trim()"])assert.equal(source.includes(implementation),true,implementation);
+  for(const safety of ["without credentials","Passwords, passphrases, host pins and live sessions are never included","host key is inspected before login"])assert.equal(source.includes(safety),true,safety);
+  const css=await readFile(new URL("../app/ssh-workspace.css",import.meta.url),"utf8");
+  for(const selector of [".ssh-quickbar",".ssh-tool-content.library",".ssh-library-toolbar",".ssh-folder-editor",".ssh-connection-tree",".ssh-inherit-defaults",".ssh-setting-toggle"])assert.equal(css.includes(selector),true,selector);
+});
