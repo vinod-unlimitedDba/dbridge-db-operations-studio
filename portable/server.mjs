@@ -110,7 +110,7 @@ async function readContainerAuditRecords() {
 
 async function appendContainerAuditRecord(input) {
   const clean = (value, max) => String(value || "").replace(/[\r\n\0]+/g, " ").trim().slice(0, max);
-  const record = { id: `container-audit-${randomBytes(8).toString("hex")}`, occurredAt: new Date().toISOString(), platform: input.platform === "kubernetes" ? "kubernetes" : "docker", action: clean(input.action, 40), target: clean(input.target, 253), namespace: clean(input.namespace, 63), context: clean(input.context, 255), changeReference: clean(input.changeReference, 100), status: ["success", "failed", "blocked"].includes(input.status) ? input.status : "failed", durationMs: Math.min(Math.max(Number(input.durationMs || 0), 0), 600000), displayCommand: clean(input.displayCommand, 1000), detail: clean(input.detail, 500) };
+  const record = { id: `container-audit-${randomBytes(8).toString("hex")}`, occurredAt: new Date().toISOString(), platform: input.platform === "kubernetes" ? "kubernetes" : input.platform === "kargo" ? "kargo" : "docker", action: clean(input.action, 40), target: clean(input.target, 253), namespace: clean(input.namespace, 63), context: clean(input.context, 255), changeReference: clean(input.changeReference, 100), status: ["success", "failed", "blocked"].includes(input.status) ? input.status : "failed", durationMs: Math.min(Math.max(Number(input.durationMs || 0), 0), 600000), displayCommand: clean(input.displayCommand, 1000), detail: clean(input.detail, 500) };
   const records = await readContainerAuditRecords(); records.unshift(record); await mkdir(USER_DATA_ROOT, { recursive: true }); await writeFile(CONTAINER_AUDIT_FILE, JSON.stringify({ version: 1, records: records.slice(0, 100) }, null, 2), "utf8"); return record;
 }
 
@@ -252,6 +252,7 @@ const toolDefinitions = {
   ansible: { command: "ansible", versionArgs: ["--version"], actions: { version: true, config: true, inventory: true, graph: true } },
   podman: { command: "podman", versionArgs: ["--version"], actions: { info: true, containers: true, images: true, networks: true, volumes: true, diskUsage: true, stats: true, logs: true, inspect: true, processes: true } },
   argocd: { command: "argocd", versionArgs: ["version", "--client", "--short"], actions: { version: true, applications: true, clusters: true, repositories: true, projects: true } },
+  kargo: { command: "kargo", versionArgs: ["version"], actions: { version: true } },
   vault: { command: "vault", versionArgs: ["version"], actions: { status: true, secrets: true, auth: true, policies: true } },
   tofu: { command: "tofu", versionArgs: ["version"], actions: { version: true, providers: true, validate: true, outputs: true, state: true, workspace: true } },
   nomad: { command: "nomad", versionArgs: ["version"], actions: { status: true, nodes: true, jobs: true, servers: true, allocations: true } },
@@ -1292,6 +1293,8 @@ function devopsCommand(input) {
   } else if (toolId === "argocd") {
     const map = { version: ["version", "--client", "--short"], applications: ["app", "list"], clusters: ["cluster", "list"], repositories: ["repo", "list"], projects: ["proj", "list"] };
     args = [...map[action]];
+  } else if (toolId === "kargo") {
+    args = ["version"];
   } else if (toolId === "vault") {
     const map = { status: ["status", "-format=json"], secrets: ["secrets", "list", "-format=json"], auth: ["auth", "list", "-format=json"], policies: ["policy", "list", "-format=json"] };
     args = [...map[action]];
@@ -1305,6 +1308,107 @@ function devopsCommand(input) {
   }
 
   return { command, args, displayCommand: commandText(command, args) };
+}
+
+
+function kargoDashboardSpecs(input) {
+  const project = devopsValue(input, "project", /^[a-z0-9][a-z0-9.-]{0,62}$/, "Kargo project", true, 63);
+  const context = devopsValue(input, "context", /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,254}$/, "Kubernetes context");
+  const contextArgs = context ? ["--context", context] : [];
+  const spec = (id, args, required = false) => ({ id, command: "kubectl", args: [...args, ...contextArgs], required, displayCommand: commandText("kubectl", [...args, ...contextArgs]) });
+  return [
+    spec("warehouses", ["get", "warehouses.kargo.akuity.io", "-n", project, "-o", "json"], true),
+    spec("freight", ["get", "freight.kargo.akuity.io", "-n", project, "-o", "json"], true),
+    spec("stages", ["get", "stages.kargo.akuity.io", "-n", project, "-o", "json"], true),
+    spec("promotions", ["get", "promotions.kargo.akuity.io", "-n", project, "-o", "json"]),
+    spec("analysisRuns", ["get", "analysisruns.argoproj.io", "-n", project, "-o", "json"]),
+    spec("applications", ["get", "applications.argoproj.io", "-A", "-o", "json"]),
+    spec("events", ["get", "events", "-n", project, "--sort-by=.lastTimestamp", "-o", "json"]),
+    spec("permissions", ["auth", "can-i", "--list", "-n", project]),
+  ];
+}
+function parseKargoItems(section) {
+  if (!section || section.code !== 0) return [];
+  try {
+    const text = String(section.stdout || "");
+    const start = text.indexOf("{");
+    const parsed = JSON.parse(start >= 0 ? text.slice(start) : text);
+    return Array.isArray(parsed.items) ? parsed.items : [];
+  } catch { return []; }
+}
+function kargoValue(value, fallback = "") {
+  if (value == null) return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+function buildKargoDashboard(result, input) {
+  const sections = result.sections || {};
+  const rawWarehouses = parseKargoItems(sections.warehouses);
+  const rawFreight = parseKargoItems(sections.freight);
+  const rawStages = parseKargoItems(sections.stages);
+  const rawPromotions = parseKargoItems(sections.promotions);
+  const rawAnalyses = parseKargoItems(sections.analysisRuns);
+  const rawApplications = parseKargoItems(sections.applications);
+  const warehouses = rawWarehouses.map((item) => {
+    const subscriptions = Array.isArray(item.spec?.subscriptions) ? item.spec.subscriptions : [];
+    const conditions = Array.isArray(item.status?.conditions) ? item.status.conditions : [];
+    const ready = conditions.find((condition) => condition.type === "Ready");
+    return { name: item.metadata?.name || "warehouse", ready: ready?.status === "True", reason: ready?.reason || ready?.message || "Awaiting discovery", subscriptions: subscriptions.map((subscription) => ({ type: subscription.image ? "image" : subscription.git ? "git" : subscription.chart ? "chart" : "artifact", source: subscription.image?.repoURL || subscription.git?.repoURL || subscription.chart?.repoURL || subscription.chart?.name || subscription.name || "configured source" })), discoveredAt: item.status?.lastFreightDiscoveryTime || item.status?.lastFreightCreationTime || item.metadata?.creationTimestamp, manifest: item };
+  });
+  const freight = rawFreight.map((item) => {
+    const spec = item.spec || {};
+    const commits = Array.isArray(spec.commits) ? spec.commits : [];
+    const images = Array.isArray(spec.images) ? spec.images : [];
+    const charts = Array.isArray(spec.charts) ? spec.charts : [];
+    const artifacts = Array.isArray(spec.artifacts) ? spec.artifacts : [];
+    const refs = [
+      ...commits.map((entry) => ({ type: "git", source: entry.repoURL || entry.repository || "repository", revision: entry.id || entry.commit || entry.tag || "" })),
+      ...images.map((entry) => ({ type: "image", source: entry.repoURL || entry.repository || entry.image || "image", revision: entry.tag || entry.digest || "" })),
+      ...charts.map((entry) => ({ type: "chart", source: entry.repoURL || entry.repository || entry.name || "chart", revision: entry.version || "" })),
+      ...artifacts.map((entry) => ({ type: "artifact", source: entry.origin?.name || entry.name || "artifact", revision: entry.revision || entry.id || "" })),
+    ];
+    return { name: item.metadata?.name || "freight", alias: item.metadata?.annotations?.["kargo.akuity.io/alias"] || item.status?.alias || "", origin: spec.origin?.name || "warehouse", createdAt: item.metadata?.creationTimestamp, artifacts: refs, currentlyIn: Object.keys(item.status?.currentlyIn || {}), verifiedIn: Object.keys(item.status?.verifiedIn || {}), approvedFor: Object.keys(item.status?.approvedFor || {}), manifest: item };
+  }).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  const stages = rawStages.map((item) => {
+    const requests = Array.isArray(item.spec?.requestedFreight) ? item.spec.requestedFreight : [];
+    const upstream = Array.from(new Set(requests.flatMap((request) => Array.isArray(request.sources?.stages) ? request.sources.stages : [])));
+    const origins = Array.from(new Set(requests.map((request) => request.origin?.name).filter(Boolean)));
+    const healthRaw = item.status?.health?.status || item.status?.health || item.status?.phase || "Unknown";
+    const health = kargoValue(healthRaw, "Unknown");
+    const conditions = Array.isArray(item.status?.conditions) ? item.status.conditions : [];
+    const currentMap = item.status?.currentFreight || item.status?.freight || {};
+    const currentFreight = typeof currentMap === "string" ? [currentMap] : Object.values(currentMap).map((entry) => typeof entry === "string" ? entry : entry?.name).filter(Boolean);
+    const history = Array.isArray(item.status?.freightHistory) ? item.status.freightHistory : [];
+    const verifications = Array.isArray(item.status?.verifications) ? item.status.verifications : [];
+    return { name: item.metadata?.name || "stage", description: item.metadata?.annotations?.["kargo.akuity.io/description"] || "", color: item.metadata?.annotations?.["kargo.akuity.io/color"] || "", health, phase: item.status?.phase || conditions.find((condition) => condition.type === "Ready")?.reason || "Observed", currentFreight, upstream, origins, autoPromotionHolds: Object.keys(item.status?.autoPromotionHolds || {}), requestedFreight: requests, promotionSteps: item.spec?.promotionTemplate?.spec?.steps?.length || item.spec?.promotionTemplate?.steps?.length || 0, verificationTemplates: item.spec?.verification?.analysisTemplates || [], verifications, history, lastPromotion: item.status?.lastPromotion || null, manifest: item, lane: 0 };
+  });
+  const stageMap = new Map(stages.map((stage) => [stage.name, stage]));
+  const laneFor = (stage, trail = new Set()) => {
+    if (trail.has(stage.name) || !stage.upstream.length) return 0;
+    const next = new Set(trail); next.add(stage.name);
+    return Math.max(0, ...stage.upstream.map((name) => stageMap.has(name) ? laneFor(stageMap.get(name), next) + 1 : 0));
+  };
+  stages.forEach((stage) => { stage.lane = laneFor(stage); });
+  stages.sort((a, b) => a.lane - b.lane || a.name.localeCompare(b.name));
+  const promotions = rawPromotions.map((item) => ({ name: item.metadata?.name || "promotion", stage: item.spec?.stage || item.metadata?.labels?.["kargo.akuity.io/stage"] || "", freight: item.spec?.freight || item.status?.freight?.name || "", phase: item.status?.phase || "Pending", message: item.status?.message || item.status?.currentStep || "", actor: item.metadata?.annotations?.["kargo.akuity.io/actor"] || item.metadata?.labels?.["kargo.akuity.io/actor"] || "controller", createdAt: item.metadata?.creationTimestamp, finishedAt: item.status?.finishedAt || item.status?.finishTime, steps: item.status?.freightCollection?.length || item.status?.currentStep || 0, manifest: item })).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  const analyses = rawAnalyses.map((item) => ({ name: item.metadata?.name || "analysis", stage: item.metadata?.labels?.["kargo.akuity.io/stage"] || item.metadata?.labels?.["kargo.akuity.io/verification-stage"] || "", phase: item.status?.phase || "Pending", message: item.status?.message || "", startedAt: item.status?.startedAt || item.metadata?.creationTimestamp, finishedAt: item.status?.finishedAt, metrics: Array.isArray(item.status?.metricResults) ? item.status.metricResults : [], manifest: item })).sort((a, b) => String(b.startedAt || "").localeCompare(String(a.startedAt || "")));
+  const applications = rawApplications.filter((item) => String(item.metadata?.annotations?.["kargo.akuity.io/authorized-stage"] || "").startsWith(String(input.project || "") + ":")).map((item) => ({ name: item.metadata?.name || "application", namespace: item.metadata?.namespace || "", stage: String(item.metadata?.annotations?.["kargo.akuity.io/authorized-stage"] || "").split(":").at(-1), sync: item.status?.sync?.status || "Unknown", health: item.status?.health?.status || "Unknown", revision: item.status?.sync?.revision || "", manifest: item }));
+  const gaps = Object.entries(sections).filter(([, section]) => section.code !== 0).map(([id, section]) => ({ id, reason: section.stderr || section.stdout || "Evidence unavailable" }));
+  return { project: String(input.project || ""), context: String(input.context || ""), warehouses, freight, stages, promotions, analyses, applications, gaps, stats: { warehouses: warehouses.length, freight: freight.length, stages: stages.length, healthyStages: stages.filter((stage) => /healthy|ready|verified/i.test(stage.health)).length, activePromotions: promotions.filter((promotion) => /pending|running|progress/i.test(promotion.phase)).length, failedPromotions: promotions.filter((promotion) => /failed|errored|aborted/i.test(promotion.phase)).length }, collectedAt: result.collectedAt };
+}
+function kargoPromotionSpec(input, requireConfirmation = true) {
+  const project = devopsValue(input, "project", /^[a-z0-9][a-z0-9.-]{0,62}$/, "Kargo project", true, 63);
+  const stage = devopsValue(input, "stage", /^[a-z0-9][a-z0-9.-]{0,62}$/, "Kargo stage", true, 63);
+  const freight = devopsValue(input, "freight", /^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$/, "Kargo Freight", true, 255);
+  const context = devopsValue(input, "context", /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,254}$/, "Kubernetes context");
+  const changeReference = devopsValue(input, "changeReference", /^[A-Za-z0-9][A-Za-z0-9 _./:#-]{0,99}$/, "Change reference", true, 100);
+  if (requireConfirmation && (input.accessMode !== "read-write" || input.confirmation !== "PROMOTE KARGO FREIGHT")) throw new Error("Read-write mode and explicit Kargo promotion confirmation are required");
+  const args = ["promote", "--project", project, "--freight", freight, "--stage", stage];
+  return { command: "kargo", args, displayCommand: commandText("kargo", args), platform: "kargo", action: "promote", target: stage, namespace: project, context, project, stage, freight, changeReference };
+}
+function kargoPromotionPreflightSpec(spec) {
+  const args = [...(spec.context ? ["--context", spec.context] : []), "auth", "can-i", "create", "promotions.kargo.akuity.io", "-n", spec.project];
+  return { command: "kubectl", args, displayCommand: commandText("kubectl", args), pass: (result) => result.code === 0 && /^yes\b/im.test(result.stdout) };
 }
 
 function kubernetesTopologyCommand(input) {
@@ -3101,6 +3205,34 @@ async function routeApi(req, res, url, port) {
     const input = await body(req); const result = await collectDashboardSections(kubernetesDashboardSpecs(input), "kubectl was not found in PATH. Use the company-approved Kubernetes client.");
     return json(res, result.ok ? 200 : 422, result);
   }
+
+  if (req.method === "POST" && url.pathname === "/api/devops/kargo-dashboard") {
+    const input = await body(req);
+    const result = await collectDashboardSections(kargoDashboardSpecs(input), "kubectl was not found in PATH. Install the company-approved Kubernetes client to inspect Kargo resources.");
+    const dashboard = buildKargoDashboard(result, input);
+    return json(res, 200, { ...result, dashboard, safety: "Fixed read-only Kubernetes queries only. Secrets are never requested and no Kargo resource is changed.", reference: "https://docs.kargo.io/user-guide/core-concepts" });
+  }
+  if (req.method === "POST" && url.pathname === "/api/devops/kargo-promote/preview") {
+    const input = await body(req); const spec = kargoPromotionSpec(input, false); const [cli, kubectl] = await Promise.all([available("kargo"), available("kubectl")]);
+    if (!kubectl.available) throw new Error("kubectl was not found in PATH. Permission preflight cannot run.");
+    const preflight = kargoPromotionPreflightSpec(spec); const started = Date.now(); const result = await run(preflight.command, preflight.args, { timeoutMs: 30000 }); const permitted = preflight.pass(result);
+    return json(res, 200, { ok: true, permitted, cliAvailable: cli.available, stage: spec.stage, freight: spec.freight, project: spec.project, displayCommand: spec.displayCommand, preflightCommand: preflight.displayCommand, evidence: [result.stdout, result.stderr, !cli.available ? "Kargo CLI is not installed; promotion execution remains disabled." : ""].filter(Boolean).join("\n").slice(0, 4000), durationMs: Date.now() - started, requiresConfirmation: "PROMOTE KARGO FREIGHT" });
+  }
+  if (req.method === "POST" && url.pathname === "/api/devops/kargo-promote") {
+    const input = await body(req); const spec = kargoPromotionSpec(input); const [cli, kubectl] = await Promise.all([available(spec.command), available("kubectl")]);
+    if (!cli.available) throw new Error("kargo was not found in PATH. Install the company-approved Kargo CLI before promotion.");
+    if (!kubectl.available) throw new Error("kubectl was not found in PATH. Permission preflight cannot run.");
+    const preflight = kargoPromotionPreflightSpec(spec); const preflightResult = await run(preflight.command, preflight.args, { timeoutMs: 30000 });
+    if (!preflight.pass(preflightResult)) {
+      const detail = [preflightResult.stdout, preflightResult.stderr].filter(Boolean).join("\n") || "Kargo promotion permission preflight did not pass"; let audit = null; let auditWarning = "";
+      try { audit = await appendContainerAuditRecord({ ...spec, status: "blocked", detail }); } catch (error) { auditWarning = error.message; }
+      return json(res, 403, { ok: false, error: "Permission preflight blocked this Kargo promotion: " + detail, displayCommand: spec.displayCommand, preflightCommand: preflight.displayCommand, audit, auditWarning });
+    }
+    const started = Date.now(); const result = await run(spec.command, spec.args, { timeoutMs: 60000 }); const durationMs = Date.now() - started; const detail = [result.stdout, result.stderr].filter(Boolean).join("\n") || (result.code === 0 ? "Kargo promotion created" : "Kargo promotion failed");
+    let audit = null; let auditWarning = ""; try { audit = await appendContainerAuditRecord({ ...spec, status: result.code === 0 ? "success" : "failed", durationMs, detail }); } catch (error) { auditWarning = error.message; }
+    return json(res, result.code === 0 ? 200 : 422, { ok: result.code === 0, error: result.code === 0 ? undefined : detail, project: spec.project, stage: spec.stage, freight: spec.freight, displayCommand: spec.displayCommand, durationMs, audit, auditWarning, ...result });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/devops/docker-dashboard") {
     await body(req); const result = await collectDashboardSections(dockerDashboardSpecs(), "docker was not found in PATH. Use the company-approved Docker client.");
     return json(res, result.ok ? 200 : 422, result);

@@ -136,6 +136,16 @@ test("expands the canvas and adds advanced SQL guard and guided DevOps packs",as
   for(const selector of [".workspace-wide",".workspace-wide-toggle",".sql-review-strip",".guided-ops-deck"])assert.equal(css.includes(selector),true,selector);
 });
 
+test("adds an advanced Kargo GitOps promotion workspace",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["Kargo GitOps Promotion Control","Freight timeline","Promotion pipeline","Artifact matrix","Promotions","verifications","Freight history","settings","Live manifest","Controlled Freight promotion","Preview permission","Promote verified Freight","NO BYPASS APPROVALS","Kargo progressive delivery"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["KargoWorkspace","refreshKargoDashboard","runKargoPromotion","kargoAutoRefresh","/api/devops/kargo-dashboard","/api/devops/kargo-promote/preview","/api/devops/kargo-promote"])assert.equal(source.includes(implementation),true,implementation);
+  const server=await readFile(new URL("../portable/server.mjs",import.meta.url),"utf8");
+  for(const implementation of ["kargoDashboardSpecs","buildKargoDashboard","kargoPromotionSpec","kargoPromotionPreflightSpec","warehouses.kargo.akuity.io","freight.kargo.akuity.io","stages.kargo.akuity.io","PROMOTE KARGO FREIGHT"])assert.equal(server.includes(implementation),true,implementation);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".kargo-controls",".kargo-workspace",".kargo-freight-timeline",".kargo-pipeline-canvas",".kargo-artifact-matrix",".kargo-stage-detail",".kargo-promotion-console"])assert.equal(css.includes(selector),true,selector);
+});
+
 test("adds an advanced read-only Lens-style Kubernetes operations cockpit",async()=>{
   const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
   for(const capability of ["Lens-style cluster cockpit","Resource inspector","Live 15s","SECRETS EXCLUDED","Rollout status","KubernetesLensWorkspace","kubeAutoRefresh","runKubeInspection","storage","configuration","access"])assert.equal(source.includes(capability),true,capability);
