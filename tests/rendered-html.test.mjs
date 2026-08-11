@@ -41,6 +41,15 @@ test("consolidates the advanced DBridge performance workflows inside SQL Diagnos
   assert.match(source,/const runPerformanceSuite=async/);
   assert.match(source,/suiteSteps/);
 });
+
+test("adds an evidence-driven SQL X-Ray troubleshooting runbook",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["SQL X-Ray Troubleshooting Runbook","Incident window","Workload and regression","Runtime, waits and blocking","Plan, binds and cursors","Optimizer, parallel and I/O","Verify the outcome","Evidence gaps are never treated as healthy","Decision path","Operator verification checklist","Run full troubleshooting sequence","Automatic assessment","Raw Oracle evidence"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["SqlXrayTroubleshooter","xrayMarkerPlaybook","summarizeXrayEvidence","xrayProgress","XRAY_BLOCKED_SESSION","XRAY_HIGH_IO_LATENCY"])assert.equal(source.includes(implementation),true,implementation);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".xray-troubleshooter",".xray-runbook",".xray-decision-path",".xray-phase-grid",".xray-evidence-browser",".xray-operator-checklist"])assert.equal(css.includes(selector),true,selector);
+});
+
 test("adds visual DevOps operations workspaces based on official product patterns",async()=>{
   const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
   for(const capability of ["Kubernetes GUI","Docker GUI","Git & GitHub","Ansible GUI","Lens-style cluster explorer","Docker Desktop-style visibility","GitKraken-inspired operations workspace","AWX-style read-only explorer","Logs & inspect","Commit graph and working-tree evidence","Refresh visual workspace"])assert.match(source,new RegExp(capability.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
