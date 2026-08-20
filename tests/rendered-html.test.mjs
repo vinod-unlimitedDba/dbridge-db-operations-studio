@@ -136,6 +136,17 @@ test("expands the canvas and adds advanced SQL guard and guided DevOps packs",as
   for(const selector of [".workspace-wide",".workspace-wide-toggle",".sql-review-strip",".guided-ops-deck"])assert.equal(css.includes(selector),true,selector);
 });
 
+test("adds a visual multi-engine execution plan investigator",async()=>{
+  const source=await readFile(new URL("../app/components/ExecutionPlanInvestigator.tsx",import.meta.url),"utf8");
+  for(const capability of ["Execution Plan Investigator","Upload baseline plan","Upload candidate plan","Side-by-side trees","Candidate heatmap","Operator delta table","Culprit ranking","Cardinality estimate failure","Dominant elapsed-time operator","Nested-loop amplification","Runtime warning or spill","Operator runtime regressed","Actuals outrank estimates","LOCAL FILE PARSING"])assert.equal(source.includes(capability),true,capability);
+  for(const engine of ["Oracle DBMS_XPLAN","PostgreSQL EXPLAIN","SQL Server Showplan","MySQL EXPLAIN","MariaDB ANALYZE","MongoDB explain"])assert.equal(source.includes(engine),true,engine);
+  for(const implementation of ["detectEngine","parseJson","parseXml","parseText","parsePlan","matchPlans","investigate","actualCoverage","matched","execution-plan-investigation.json"])assert.equal(source.includes(implementation),true,implementation);
+  const page=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  assert.equal(page.includes("<ExecutionPlanInvestigator"),true,"Plan investigator is not mounted in SQL Diagnostics");
+  const css=await readFile(new URL("../app/execution-plan-investigator.css",import.meta.url),"utf8");
+  for(const selector of [".execution-plan-investigator",".epi-input-grid",".epi-tree",".epi-scoreboard",".epi-analysis-grid",".epi-finding-list",".epi-finding-detail",".epi-delta-table"])assert.equal(css.includes(selector),true,selector);
+});
+
 test("adds an advanced Kargo GitOps promotion workspace",async()=>{
   const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
   for(const capability of ["Kargo GitOps Promotion Control","Freight timeline","Promotion pipeline","Artifact matrix","Promotions","verifications","Freight history","settings","Live manifest","Controlled Freight promotion","Preview permission","Promote verified Freight","NO BYPASS APPROVALS","Kargo progressive delivery"])assert.equal(source.includes(capability),true,capability);
