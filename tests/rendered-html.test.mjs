@@ -184,3 +184,17 @@ test("adds a unified command center and guided workflow to every Studio tab",asy
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   for(const selector of [".studio-context-strip",".studio-readiness",".command-palette.advanced",".command-results",".studio-guide-backdrop",".guide-steps",".guide-modes"])assert.equal(css.includes(selector),true,selector);
 });
+
+test("adds MIT-attributed Oracle plan visualization compatibility",async()=>{
+  const source=await readFile(new URL("../app/components/ExecutionPlanInvestigator.tsx",import.meta.url),"utf8");
+  for(const capability of ["ORACLE INPUT LAB","Five DBA plan formats, one investigation model","Oracle row-flow map","Monitor & resources","ORACLE PLAN MAP","ORACLE RUNTIME EVIDENCE","Load Oracle regression","PREDICATE EVIDENCE","ora-explain-plan-viz formats - MIT"])assert.equal(source.includes(capability),true,capability);
+  for(const format of ["DBMS_XPLAN","SQL Monitor text","SQL Monitor XML","V$SQL_PLAN JSON","XBI / eXplain Better"])assert.equal(source.includes(format),true,format);
+  const parser=await readFile(new URL("../app/components/oracle-plan.ts",import.meta.url),"utf8");
+  for(const implementation of ["detectOraclePlanFormat","parseOraclePlan","parseDbmsXplan","parseSqlMonitorText","parseSqlMonitorXml","parseOracleJson","parseXbi","parent_id","actual_cr_buffer_gets","plan_monitor"])assert.equal(parser.includes(implementation),true,implementation);
+  const css=await readFile(new URL("../app/execution-plan-investigator.css",import.meta.url),"utf8");
+  for(const selector of [".epi-oracle-formats",".oracle-flow-view",".oracle-flow-canvas",".oracle-node-inspector",".oracle-monitor-kpis",".oracle-evidence-table"])assert.equal(css.includes(selector),true,selector);
+  const notice=await readFile(new URL("../THIRD_PARTY_NOTICES.md",import.meta.url),"utf8");
+  assert.equal(notice.includes("davidbudac/ora-explain-plan-viz"),true,"upstream attribution");
+  assert.equal(notice.includes("MIT License"),false,"notice uses the full MIT grant rather than an incomplete label");
+  assert.equal(notice.includes("Permission is hereby granted"),true,"MIT permission text");
+});
