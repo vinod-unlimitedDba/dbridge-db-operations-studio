@@ -198,3 +198,21 @@ test("adds MIT-attributed Oracle plan visualization compatibility",async()=>{
   assert.equal(notice.includes("MIT License"),false,"notice uses the full MIT grant rather than an incomplete label");
   assert.equal(notice.includes("Permission is hereby granted"),true,"MIT permission text");
 });
+
+test("adds persistent nested SQL sub-sheets for tuning variants",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["parentId:string|null","addSqlSubSheet","Sub-sheet created from","Close or move its sub-sheets first","Ctrl+Alt+Shift+N","New sub-sheet from active worksheet","sub-count"])assert.equal(source.includes(capability),true,capability);
+  const server=await readFile(new URL("../portable/server.mjs",import.meta.url),"utf8");
+  for(const behavior of ["invalid parent worksheet identifier","Each sub-sheet must reference an open parent worksheet","SQL sub-sheets support one parent level","parentId"])assert.equal(server.includes(behavior),true,behavior);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".worksheet-tab.parent-sheet",".worksheet-tab.sub-sheet",".worksheet-add.sub-sheet-add",".worksheet-select .sub-count"])assert.equal(css.includes(selector),true,selector);
+});
+
+test("adds an advanced operations cockpit to every Studio tab",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["ADVANCED TAB","OPERATOR OUTCOME","FASTEST SAFE PATH","POWER TOOLS","Continue:","pinned across Studio","Advanced tool pinned","Environment scope applied","Sensitive actions stay gated"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["StudioAdvancedProfile","studioAdvancedProfiles","activeStudioModeId","studioCockpitScore","featuredStudioModes","pinnedStudioItems","toggleStudioPin","openNextStudioMode","dbops.studio.pins.v1","dbops.studio.cockpit-open.v1"])assert.equal(source.includes(implementation),true,implementation);
+  for(const tool of ["sql:","mongodb:","diagnostics:","observability:","intelligence:","devops:","investigation:"])assert.equal(source.includes(tool),true,tool);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".studio-tab-cockpit",".cockpit-identity",".cockpit-score",".cockpit-brief",".cockpit-gates",".cockpit-workflow",".cockpit-launcher",".cockpit-pins"])assert.equal(css.includes(selector),true,selector);
+});

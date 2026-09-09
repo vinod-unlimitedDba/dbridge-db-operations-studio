@@ -84,9 +84,16 @@ function validateEditorSession(input) {
     if (!EDITOR_ENGINES.has(engine)) throw new Error("The editor session contains an unsupported database engine");
     if (content.length > 50000 || /\0/.test(content)) throw new Error("Each editor tab is limited to 50,000 characters");
     totalCharacters += content.length;
-    return { id, name, engine, content, dirty: tab.dirty === true, cursor: Math.min(Math.max(Number(tab.cursor || 0), 0), content.length) };
+    const parentId = typeof tab.parentId === "string" && tab.parentId ? tab.parentId : null;
+    if (parentId && !/^tab-[A-Za-z0-9-]{6,64}$/.test(parentId)) throw new Error("The editor session contains an invalid parent worksheet identifier");
+    return { id, name, engine, content, dirty: tab.dirty === true, cursor: Math.min(Math.max(Number(tab.cursor || 0), 0), content.length), parentId };
   });
   if (totalCharacters > 200000) throw new Error("The combined editor session is limited to 200,000 characters");
+  const tabIds = new Set(cleanTabs.map((tab) => tab.id));
+  for (const tab of cleanTabs) {
+    if (tab.parentId && (!tabIds.has(tab.parentId) || tab.parentId === tab.id)) throw new Error("Each sub-sheet must reference an open parent worksheet");
+    if (tab.parentId && cleanTabs.find((candidate) => candidate.id === tab.parentId)?.parentId) throw new Error("SQL sub-sheets support one parent level");
+  }
   const activeId = cleanTabs.some((tab) => tab.id === input.activeId) ? String(input.activeId) : cleanTabs[0]?.id || "";
   const fontSize = Math.min(Math.max(Number(input.settings?.fontSize || 11), 9), 20);
   const autocompleteScope = ["all", "sql", "ops", "off"].includes(input.settings?.autocompleteScope) ? input.settings.autocompleteScope : "all";
