@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile, stat, open, mkdir, writeFile, unlink } from "node:fs/promises";
+import { readFile, stat, open, mkdir, writeFile, unlink, rename } from "node:fs/promises";
 import { watch } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,7 @@ const EDITOR_FILE = join(USER_DATA_ROOT, "editor-session.json");
 const VERSION_BASELINE_FILE = join(USER_DATA_ROOT, "devops-version-baseline.json");
 const INVESTIGATION_FILE = join(USER_DATA_ROOT, "investigation-workspace.json");
 const CONTAINER_AUDIT_FILE = join(USER_DATA_ROOT, "container-change-audit.json");
+const ENCRYPTED_VAULT_FILE = join(USER_DATA_ROOT, "keep-pass-vault.json");
 const TKPROF_ROOT = join(USER_DATA_ROOT, "tkprof");
 const sessionCredentialVault = createSessionCredentialVault();
 const sqlAdapterCatalog = {
@@ -104,6 +105,33 @@ async function writeEditorSession(session) {
   await mkdir(USER_DATA_ROOT, { recursive: true });
   await writeFile(EDITOR_FILE, JSON.stringify({ version: 1, ...session }, null, 2), "utf8");
 }
+
+function validateEncryptedVault(input) {
+  const vault = input?.vault || input;
+  const validBase64 = (value, max) => typeof value === "string" && value.length > 0 && value.length <= max && /^[A-Za-z0-9+/]+={0,2}$/.test(value);
+  if (vault?.version !== 1 || vault.kdf !== "PBKDF2-SHA256" || vault.cipher !== "AES-256-GCM") throw new Error("Unsupported encrypted vault format");
+  const iterations = Number(vault.iterations);
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 1000000) throw new Error("Encrypted vault key derivation settings are invalid");
+  if (!validBase64(vault.salt, 64) || Buffer.from(vault.salt, "base64").length !== 16) throw new Error("Encrypted vault salt is invalid");
+  if (!validBase64(vault.iv, 64) || Buffer.from(vault.iv, "base64").length !== 12) throw new Error("Encrypted vault IV is invalid");
+  if (!validBase64(vault.ciphertext, 2800000) || Buffer.from(vault.ciphertext, "base64").length > 2 * 1024 * 1024) throw new Error("Encrypted vault payload exceeds the 2 MB limit");
+  const updatedAt = String(vault.updatedAt || "");if (!updatedAt || !Number.isFinite(Date.parse(updatedAt))) throw new Error("Encrypted vault timestamp is invalid");
+  return { version: 1, kdf: "PBKDF2-SHA256", cipher: "AES-256-GCM", iterations, salt: vault.salt, iv: vault.iv, ciphertext: vault.ciphertext, updatedAt };
+}
+
+async function readEncryptedVault() {
+  try { return validateEncryptedVault(JSON.parse(await readFile(ENCRYPTED_VAULT_FILE, "utf8"))); }
+  catch (error) { if (error?.code === "ENOENT") return null; throw new Error(error?.message || "The encrypted Keep Pass vault could not be read"); }
+}
+
+async function writeEncryptedVault(input) {
+  const vault = validateEncryptedVault(input);await mkdir(USER_DATA_ROOT, { recursive: true });const temp = `${ENCRYPTED_VAULT_FILE}.${randomBytes(6).toString("hex")}.tmp`;
+  try { await writeFile(temp, JSON.stringify(vault, null, 2), { encoding: "utf8", mode: 0o600 });await rename(temp, ENCRYPTED_VAULT_FILE); }
+  finally { await unlink(temp).catch(() => {}); }
+  return vault;
+}
+
+async function deleteEncryptedVault() { try { await unlink(ENCRYPTED_VAULT_FILE); } catch (error) { if (error?.code !== "ENOENT") throw error; } }
 
 async function readContainerAuditRecords() {
   try {
@@ -2409,9 +2437,9 @@ async function runMongosyncController(input) {
   return { ok: true, action, endpoint: `127.0.0.1:${port}`, before: progress, response, requestedAt: new Date().toISOString(), note: action === "commit" ? "Cutover requested. Poll progress until state is COMMITTED before redirecting application traffic." : "Lifecycle request accepted. Refresh progress to observe the state transition." };
 }
 async function routeApi(req, res, url, port) {
-  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.30.0", port } });
+  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.31.0", port } });
   if (!isTrusted(req, port)) return json(res, 403, { ok: false, error: "Request rejected by local security policy" });
-  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.30.0", host: HOST, port });
+  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.31.0", host: HOST, port });
   if (req.method === "POST" && url.pathname === "/api/credentials/session") {
     const input = await body(req);
     return json(res, 200, { ok: true, credential: sessionCredentialVault.store(input), storage: "volatile-agent-memory" });
@@ -2429,6 +2457,9 @@ async function routeApi(req, res, url, port) {
     sessionCredentialVault.clear();
     return json(res, 200, { ok: true, credential: { available: false }, storage: "volatile-agent-memory" });
   }
+  if (req.method === "GET" && url.pathname === "/api/vault") return json(res, 200, { ok: true, vault: await readEncryptedVault(), storage: "encrypted-local-agent-file" });
+  if (req.method === "POST" && url.pathname === "/api/vault") { const vault = await writeEncryptedVault(await body(req)); return json(res, 200, { ok: true, vault: { ...vault, ciphertext: undefined }, storage: "encrypted-local-agent-file" }); }
+  if (req.method === "POST" && url.pathname === "/api/vault/delete") { const input = await body(req);if (input.confirmation !== "DELETE ENCRYPTED VAULT") throw new Error("Encrypted vault deletion requires confirmation");await deleteEncryptedVault();sessionCredentialVault.clear();return json(res, 200, { ok: true, storage: "encrypted-local-agent-file" }); }
   if (req.method === "GET" && url.pathname === "/api/tools/status") return json(res, 200, { ok: true, tools: await toolStatus() });
   if (req.method === "GET" && url.pathname === "/api/adapters") {
     const availability = Object.fromEntries(await Promise.all(Object.entries(sqlAdapterCatalog).map(async ([id, adapter]) => {

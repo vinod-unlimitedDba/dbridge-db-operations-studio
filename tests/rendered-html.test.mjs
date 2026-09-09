@@ -178,7 +178,7 @@ test("adds Tabby and mRemoteNG-style remote operations features",async()=>{
 
 test("adds a unified command center and guided workflow to every Studio tab",async()=>{
   const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
-  for(const capability of ["Studio Command Center","Guided workflow","Search pages, Studio tabs and tools","FASTEST SAFE PATH","JUMP TO A TOOL","Alt 1-7","Paste mode available","Read-only by default"])assert.equal(source.includes(capability),true,capability);
+  for(const capability of ["Studio Command Center","Guided workflow","Search pages, Studio tabs and tools","FASTEST SAFE PATH","JUMP TO A TOOL","Alt 1-8","Paste mode available","Read-only by default"])assert.equal(source.includes(capability),true,capability);
   for(const implementation of ["studioToolMeta","studioToolOrder","openStudioLocation","studioCommandQuery","studioRecents","dbops.studio.recents.v1","paletteResults","studioStatusTone"])assert.equal(source.includes(implementation),true,implementation);
   for(const tool of ["Worksheet editor","Pipeline Builder","Incident command","Migration compare","Bottleneck analysis","Kubernetes GUI","Incident timeline"])assert.equal(source.includes(tool),true,tool);
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
@@ -199,6 +199,18 @@ test("adds MIT-attributed Oracle plan visualization compatibility",async()=>{
   assert.equal(notice.includes("Permission is hereby granted"),true,"MIT permission text");
 });
 
+test("adds a KeePass-style encrypted credential and URL vault",async()=>{
+  const source=await readFile(new URL("../app/components/KeepPassVault.tsx",import.meta.url),"utf8");
+  for(const capability of ["KEEP PASS / LOCAL ENCRYPTED VAULT","Credentials, URLs and connection targets","database","ssh","devops","web","generic","Create encrypted vault","Unlock encrypted vault","Generate","Copy","Import encrypted","Export encrypted","Change master password","AUTO-LOCK","Connect now"])assert.equal(source.includes(capability),true,capability);
+  for(const security of ["AES-256-GCM","PBKDF2-SHA256","310000","master password never stored","crypto.subtle.deriveKey","crypto.subtle.encrypt","crypto.subtle.decrypt","clipboard clears in 20 seconds","No cloud secret storage","DELETE ENCRYPTED VAULT"])assert.equal(source.includes(security),true,security);
+  const page=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const integration of ["KeepPassVault","launchVaultDatabase","launchVaultSsh","launchVaultDevops","clearVaultRuntimeCredentials","Encrypted vault","studioTool!==\"vault\""])assert.equal(page.includes(integration),true,integration);
+  const server=await readFile(new URL("../portable/server.mjs",import.meta.url),"utf8");
+  for(const endpoint of ["/api/vault","/api/vault/delete","keep-pass-vault.json","validateEncryptedVault","encrypted-local-agent-file","mode: 0o600"])assert.equal(server.includes(endpoint),true,endpoint);
+  const css=await readFile(new URL("../app/keep-pass.css",import.meta.url),"utf8");
+  for(const selector of [".keep-pass-vault",".kp-lock-screen",".kp-workspace",".kp-entry-list",".kp-editor",".kp-strength"])assert.equal(css.includes(selector),true,selector);
+});
+
 test("adds persistent nested SQL sub-sheets for tuning variants",async()=>{
   const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
   for(const capability of ["parentId:string|null","addSqlSubSheet","Sub-sheet created from","Close or move its sub-sheets first","Ctrl+Alt+Shift+N","New sub-sheet from active worksheet","sub-count"])assert.equal(source.includes(capability),true,capability);
@@ -212,7 +224,7 @@ test("adds an advanced operations cockpit to every Studio tab",async()=>{
   const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
   for(const capability of ["ADVANCED TAB","OPERATOR OUTCOME","FASTEST SAFE PATH","POWER TOOLS","Continue:","pinned across Studio","Advanced tool pinned","Environment scope applied","Sensitive actions stay gated"])assert.equal(source.includes(capability),true,capability);
   for(const implementation of ["StudioAdvancedProfile","studioAdvancedProfiles","activeStudioModeId","studioCockpitScore","featuredStudioModes","pinnedStudioItems","toggleStudioPin","openNextStudioMode","dbops.studio.pins.v1","dbops.studio.cockpit-open.v1"])assert.equal(source.includes(implementation),true,implementation);
-  for(const tool of ["sql:","mongodb:","diagnostics:","observability:","intelligence:","devops:","investigation:"])assert.equal(source.includes(tool),true,tool);
+  for(const tool of ["sql:","vault:","mongodb:","diagnostics:","observability:","intelligence:","devops:","investigation:"])assert.equal(source.includes(tool),true,tool);
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   for(const selector of [".studio-tab-cockpit",".cockpit-identity",".cockpit-score",".cockpit-brief",".cockpit-gates",".cockpit-workflow",".cockpit-launcher",".cockpit-pins"])assert.equal(css.includes(selector),true,selector);
 });
