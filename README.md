@@ -25,6 +25,17 @@ If company security blocks unsigned portable executables, unzip
 This Windows package includes Node.js and its dependencies, so it can start
 without downloading packages.
 
+## SSH jump-server database connections
+
+The SQL Studio connection panel now offers **Through SSH jump server**. Connect
+the jump server in the SSH workspace, return to SQL Studio, choose its live
+session, enter the database private host and port, and open the tunnel. Database
+validation and queries then resolve that live tunnel through the local agent.
+See `portable/README.txt` for Oracle and PostgreSQL examples, TLS requirements,
+restart behavior, and single-destination routing limits. The published download
+is `public/downloads/DBridge-Node-Portable.zip`; use the extracted local edition
+for real connections.
+
 ## Capabilities
 
 - A v2.22 unified diagnostics workspace combining performance triage, flight

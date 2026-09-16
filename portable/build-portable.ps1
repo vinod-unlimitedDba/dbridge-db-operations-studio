@@ -44,6 +44,7 @@ $runtimeFiles = @(
   "smoke-test.mjs",
   "portable-launcher.mjs",
   "ssh-terminal.mjs",
+  "database-tunnel.mjs",
   "ssh-trust.mjs",
   "oracle-sql-id.mjs",
   "oracle-bottleneck.mjs",

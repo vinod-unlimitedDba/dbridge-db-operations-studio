@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import SshWorkspace from "./components/SshWorkspace";
+import DatabaseTunnelPanel, { type DatabaseTunnel } from "./components/DatabaseTunnelPanel";
 import ExecutionPlanInvestigator from "./components/ExecutionPlanInvestigator";
 import KeepPassVault, { type KeepPassEntry } from "./components/KeepPassVault";
 
@@ -23,8 +24,9 @@ type SshSession = { sessionId:string; host:string; port:number; username:string;
 type AnyResult = Record<string,any> | null;
 type Environment = "Production" | "SIT" | "UAT-Test" | "DEV";
 type Adapter = { name:string; port:number; tier:string; family:string; auth:string; driver?:string; client?:string; available:boolean; directAvailable:boolean; clientAvailable:boolean; preferredAccess:string };
-type DbForm = { environment:Environment; engine:string; authMode:"password"|"context"; tlsMode:"prefer"|"require"|"disable"; host:string; port:string; database:string; username:string; password:string };
-type Profile = Omit<DbForm,"password"> & { id:string; name:string };
+type DbForm = { environment:Environment; engine:string; authMode:"password"|"context"; tlsMode:"prefer"|"require"|"disable"; host:string; port:string; database:string; username:string; password:string; connectionMode?:"direct"|"ssh"; sshTunnel?:DatabaseTunnel; oracleServerDN?:string };
+type Profile = Omit<DbForm,"password">;
+type SavedProfile = Omit<DbForm,"password"|"sshTunnel"> & { id:string; name:string };
 type SshConnectionRequest = { url:string; requestId:number; username:string; password:string; remember:boolean; autoConnect:boolean };
 type CatalogObject = { type:string; schema:string; name:string };
 type GridResult = { columns:string[]; rows:(string|number|boolean|null)[][]; raw:string; stderr:string; durationMs:number };
@@ -478,7 +480,7 @@ export default function Home(){
   const [agentVersion,setAgentVersion]=useState("");
   const [adapters,setAdapters]=useState<Record<string,Adapter>>({});
   const [form,setForm]=useState<DbForm>(defaultForm());
-  const [profiles,setProfiles]=useState<Profile[]>([]);
+  const [profiles,setProfiles]=useState<SavedProfile[]>([]);
   const [profileId,setProfileId]=useState("");
   const [activeCredentialId,setActiveCredentialId]=useState("");
   const [profileName,setProfileName]=useState("");
@@ -756,7 +758,7 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     setForm(nextForm);setEnvironment(profile.environment);setActiveCredentialId(id);setConnectionState("idle");setCatalog([]);
     try{
       const data=await agentCall("/api/credentials/session/status",{method:"POST",body:JSON.stringify({scope:"database",id})});
-      if(profile.authMode==="context"||data.credential?.available){notify(`${profile.name} selected; connecting to its workspace`);await connectToWorkspace(nextForm,profile.environment,id)}
+      if(profile.connectionMode!=="ssh"&&(profile.authMode==="context"||data.credential?.available)){notify(`${profile.name} selected; connecting to its workspace`);await connectToWorkspace(nextForm,profile.environment,id)}
       else{openConnectionPanel();notify(`${profile.name} selected; enter its password once, then save or connect`)}
     }catch(error){openConnectionPanel();notify(error instanceof Error?error.message:"Saved credential status is unavailable")}
   };
@@ -764,7 +766,7 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     if(!form.host&&!["bigquery","databricks","hana"].includes(form.engine))return notify("Enter the database host before saving a profile");
     const name=(profileName||`${adapterDefaults[form.engine].name} · ${form.database||form.host||environment}`).trim();
     const id=profileId||`profile-${Date.now().toString(36)}`;
-    const profile:Profile={id,name,environment:form.environment,engine:form.engine,authMode:form.authMode,tlsMode:form.tlsMode,host:form.host,port:form.port,database:form.database,username:form.username};
+    const profile:SavedProfile={id,name,environment:form.environment,engine:form.engine,authMode:form.authMode,tlsMode:form.tlsMode,host:form.host,port:form.port,database:form.database,username:form.username,connectionMode:form.connectionMode||"direct",oracleServerDN:form.oracleServerDN||""};
     const remembered=keepPass&&form.authMode==="password"&&Boolean(form.password);
     try{
       if(remembered){await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id,username:form.username,password:form.password})});setForm(value=>({...value,password:""}))}
@@ -780,7 +782,7 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     const next=profiles.filter(item=>item.id!==profileId);
     setProfiles(next);setProfileId("");setActiveCredentialId("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));notify("Saved profile and its session credential were deleted");
   };
-  const payload=(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>({environment:targetEnvironment,engine:value.engine,connection:{host:value.host.trim(),port:value.port.trim(),database:value.database.trim(),username:value.username.trim(),password:value.password,credentialId:credentialId||undefined,authMode:value.authMode,tlsMode:value.tlsMode}});
+  const payload=(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>({environment:targetEnvironment,engine:value.engine,connection:{host:value.host.trim(),port:value.port.trim(),database:value.database.trim(),username:value.username.trim(),password:value.password,credentialId:credentialId||undefined,authMode:value.authMode,tlsMode:value.tlsMode,connectionMode:value.connectionMode||"direct",sshTunnel:value.sshTunnel,oracleServerDN:value.oracleServerDN}});
 
   const loadCatalog=async(silent=false,value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
     setCatalogLoading(true);
@@ -1328,7 +1330,7 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
       <div className="ops-scroll">
         {view==="studio"&&<div className="ops-view">
           <header className="studio-heading"><div><p>UNIFIED DATABASE + DEVOPS OPERATIONS</p><h1>DB Studio</h1><span>Run SQL, diagnose performance, analyze logs and traces, and inspect delivery platforms from one shared environment context.</span></div><div><span><b>{readyCount||"—"}</b><small>connectors ready</small></span><span><b>50</b><small>tuning checks</small></span><span><b>{Object.values(toolInventory).filter(tool=>tool.available).length}</b><small>DevOps tools ready</small></span></div></header>
-          {agentState!=="online"&&<section className="agent-warning"><b>Local database agent is not paired.</b><span>Start the local database agent on port 17865, then reload this page. Hosted copies cannot access laptop databases.</span></section>}
+          {agentState!=="online"&&<section className="agent-warning"><b>Local database agent is not paired.</b><span>Open the <a href="/downloads/DBridge-Node-Portable.zip">updated local edition</a> to connect to databases and SSH jump servers. Requires Node.js 22.13 or newer. Hosted copies cannot access laptop databases directly.</span></section>}
           <nav className="studio-tool-tabs" aria-label="Studio tools">
             {studioToolOrder.map((tool,index)=>{const meta=studioToolMeta[tool];return <button key={tool} className={studioTool===tool?"active":""} onClick={()=>openStudioLocation(tool)} title={meta.purpose}><i>{meta.mark}</i><span><b>{meta.label}</b><small>{meta.summary}</small></span><kbd>Alt {index+1}</kbd></button>})}
           </nav>
@@ -1349,12 +1351,13 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
           <section className={`studio-grid ${studioTool==="devops"||studioTool==="vault"?"without-connection":connectionPanelOpen?"connection-open":"connection-collapsed"}`}>
             <div hidden={studioTool!=="vault"} className="keep-pass-mount"><KeepPassVault environment={environment} agentOnline={agentState==="online"} agentCall={agentCall} notify={notify} onLaunchDatabase={launchVaultDatabase} onLaunchSsh={launchVaultSsh} onLaunchDevops={launchVaultDevops} onLock={clearVaultRuntimeCredentials}/></div>
             {studioTool!=="devops"&&studioTool!=="vault"&&(connectionPanelOpen?<aside className="db-connector panel-dark" onMouseEnter={cancelConnectionPanelHide} onMouseLeave={scheduleConnectionPanelHide} onFocusCapture={cancelConnectionPanelHide} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))scheduleConnectionPanelHide()}}>
-              <header><div><span>01</span><p><b>Connection</b><small>Adapter-aware secure target</small></p></div><aside><em className={connectionState}>{connectionState}</em><button className="connection-collapse" onClick={()=>setConnectionPanelOpen(false)} aria-label="Auto-hide Connection panel">Hide</button></aside></header>
+              <header><div><span>01</span><p><b>Connection</b><small>Direct or SSH jump server</small></p></div><aside><em className={connectionState}>{connectionState}</em><button className="connection-collapse" onClick={()=>setConnectionPanelOpen(false)} aria-label="Auto-hide Connection panel">Hide</button></aside></header>
               <div className="connector-form">
                 <label>ADAPTER<select value={form.engine} onChange={event=>selectEngine(event.target.value)}>{engineOrder.map(engine=><option key={engine} value={engine}>{adapters[engine]?.name||adapterDefaults[engine].name}</option>)}</select></label>
                 <label>SAVED PROFILE<select value={profileId} onChange={event=>applyProfile(event.target.value)}><option value="">Select profile…</option>{scopedProfiles.map(profile=><option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>
                 <div className="profile-actions"><input aria-label="Profile name" value={profileName} onChange={event=>setProfileName(event.target.value)} placeholder="Profile name (optional)"/><button onClick={saveProfile}>Save profile</button><button onClick={deleteProfile} disabled={!profileId}>Delete</button></div>
                 <div className="autofill-row"><button onClick={applyDefaults}>Autofill adapter defaults</button><span>Secrets stay in agent memory</span></div>
+                <DatabaseTunnelPanel value={form} agentOnline={agentState==="online"} agentCall={agentCall} onChange={patchForm} onOpenSsh={()=>{setStudioTool("devops");setDevopsMode("ssh")}}/>
                 <label>AUTHENTICATION<select value={form.authMode} onChange={event=>patchForm({authMode:event.target.value as DbForm["authMode"],password:""})}><option value="password">Username + password</option><option value="context">Existing CLI / integrated context</option></select></label>
                 <label>TLS POLICY<select value={form.tlsMode} onChange={event=>patchForm({tlsMode:event.target.value as DbForm["tlsMode"]})}><option value="require">Require trusted TLS</option><option value="prefer">Driver default / prefer TLS</option><option value="disable">Disable TLS (approved internal)</option></select></label>
                 <div className="field-pair"><label>HOST<input value={form.host} onChange={event=>patchForm({host:event.target.value})} placeholder={form.engine==="snowflake"?"account identifier":"db.company.net"}/></label><label>PORT<input value={form.port} onChange={event=>patchForm({port:event.target.value})}/></label></div>

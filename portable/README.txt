@@ -15,6 +15,45 @@ drivers into this extracted folder on the first connected run. Later launches
 work offline. The separate Windows offline package already includes Node.js and
 all dependencies. Close the terminal window or press Ctrl+C to stop DBridge.
 
+SSH jump-server database connections (v2.32)
+-------------------------------------------
+1. Open SQL Studio and choose Through SSH jump server under Connection route.
+2. Select Connect jump server. Enter the SSH host, port, user and authentication
+   method. Verify the presented host fingerprint against your trusted source.
+3. Select Database connection to return to SQL Studio, then Refresh and choose
+   the connected jump server.
+4. Enter the actual database private hostname and port, then Open database tunnel.
+5. Enter your database/service and separate database credentials, then Connect.
+   Tunnel open means local forwarding is ready; Connect proves database access.
+
+Example 1: Oracle at oracle-prod.internal:1521 with service APPPROD through
+jumpuser@bastion.internal:22. For Oracle TCPS select Require trusted TLS and
+enter the exact server certificate DN supplied by your DBA. The TCP/TCPS port
+must match your listener; 1521 is only an example.
+Example 2: PostgreSQL at postgres-prod.internal:5432, database orders, through
+the same jump server. Require trusted TLS validates the original database name.
+
+The bundled drivers support Oracle, PostgreSQL, Redshift, MySQL, MariaDB,
+SQL Server, Synapse and a selected MongoDB member. CLI/integrated authentication
+that cannot use a bundled driver is blocked for this route. MongoDB uses a
+single-member direct connection; topology discovery and failover are not routed.
+Database listener/gateway redirects (including Oracle RAC SCAN) may need
+additional approved routing. SSH must permit local TCP forwarding to the target.
+RDP-only jump servers are not supported by the SSH route. The SSH session used
+here also requires permission to open the app's existing remote shell.
+
+Tunnel handles remain in memory. Saved profiles remember that SSH is required,
+without saving passwords, session IDs or local ports. After restarting, reconnect
+the jump server and reopen the database tunnel. Close tunnel or Disconnect
+closes its local forward; the SSH session can remain open. Closing the SSH
+session closes its tunnels. Lost tunnels cause an error instead of a CLI or
+direct-connection fallback. Idle SSH sessions expire after 15 minutes; database
+traffic keeps their activity current. Each session supports four local forwards.
+
+Use this extracted local edition for real database access. The hosted site
+provides the interface and download; it does not itself reach private databases.
+First launch needs internet access to install the locked database drivers.
+
 Friendly application shell
 --------------------------
 DBridge v2.30 uses one consistent application shell across SQL Studio,

@@ -342,6 +342,16 @@ export function listSshForwards(sessionId) {
   return [...session.forwards.values()].map(describeForward);
 }
 
+// Database requests resolve the live handle on every operation. Never accept a
+// browser-supplied local port or fall back to a direct route after SSH closes.
+export function resolveSshLocalForward(sessionId, forwardId) {
+  const session = requireSession(sessionId);
+  const forwarding = session.forwards.get(String(forwardId || ""));
+  if (!forwarding || !forwarding.server.listening) throw new Error("The database tunnel is closed. Reopen it through the jump server.");
+  touch(session);
+  return { ...describeForward(forwarding), sessionId: session.id, jumpHost: session.host, jumpPort: session.port, jumpUsername: session.username };
+}
+
 export async function openSshLocalForward(sessionId, input) {
   const session = requireSession(sessionId);
   if (session.forwards.size >= SSH_TERMINAL_LIMITS.maxForwardsPerSession) {
@@ -358,11 +368,17 @@ export async function openSshLocalForward(sessionId, input) {
     server: null,
   };
   const server = createTcpServer((socket) => {
+    touch(session);
     forwarding.sockets.add(socket);
     socket.on("close", () => forwarding.sockets.delete(socket));
     socket.on("error", () => { /* the socket closes itself */ });
     session.client.forwardOut("127.0.0.1", Number(socket.remotePort) || 0, target.remoteHost, target.remotePort, (error, stream) => {
       if (error) { socket.destroy(new Error("The SSH destination refused the forwarded connection")); return; }
+      if (socket.destroyed || session.disposed) { stream.destroy(); return; }
+      socket.on("close", () => stream.destroy());
+      socket.on("data", () => touch(session));
+      stream.on("data", () => touch(session));
+      stream.on("close", () => socket.destroy());
       stream.on("error", () => socket.destroy());
       socket.pipe(stream).pipe(socket);
     });
@@ -378,6 +394,10 @@ export async function openSshLocalForward(sessionId, input) {
       resolvePromise();
     });
   });
+  if (session.disposed) {
+    await new Promise((resolvePromise) => server.close(resolvePromise));
+    throw new Error("The SSH session closed while opening the tunnel");
+  }
   session.forwards.set(forwarding.id, forwarding);
   touch(session);
   session.emit({ type: "forward", action: "opened", forward: describeForward(forwarding) });
