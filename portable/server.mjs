@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
+import { connect as connectTcp } from "node:net";
 import { execFile } from "node:child_process";
 import { oracleSqlIdCheckCatalog, oracleSqlIdCheckSql, analyzeOracleSqlIdCheck } from "./oracle-sql-id.mjs";
 import { oracleBottleneckCatalog, analyzeOracleBottlenecks } from "./oracle-bottleneck.mjs";
@@ -399,12 +400,14 @@ function normalizeDatabaseConnection(input) {
   const password = String(source.password || remembered?.password || "");
   const authMode = source.authMode === "context" ? "context" : "password";
   const tlsMode = ["require", "disable"].includes(source.tlsMode) ? source.tlsMode : "prefer";
+  const tlsServername = String(source.tlsServername || "").trim();
   if (host && !/^[A-Za-z0-9_.-]{1,255}$/.test(host)) throw new Error("Enter a valid database host, account, or profile target");
+  if (tlsServername && !/^[A-Za-z0-9_.-]{1,255}$/.test(tlsServername)) throw new Error("Enter a valid TLS database server name");
   if (port && (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) throw new Error("Enter a valid database port");
   if (database && !/^[A-Za-z0-9_.:$@/-]{1,255}$/.test(database)) throw new Error("Enter a valid database, service, project, or warehouse identifier");
   if (username && !/^[A-Za-z0-9_.@+\\-]{1,255}$/.test(username)) throw new Error("Enter a valid database username, profile, or secure key");
   if (/[\r\n\0]/.test(password) || password.length > 1000) throw new Error("The password contains unsupported characters");
-  return { engine, adapter, host, port, database, username, password, authMode, tlsMode };
+  return { engine, adapter, host, port, database, username, password, authMode, tlsMode, tlsServername };
 }
 
 async function directDriverModule(engine) {
@@ -527,6 +530,7 @@ async function collectMongoBottleneckEvidence(input, focus = {}) {
   const timeout = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
   const options = { appName: "DBridge-Portable-Monitor", serverSelectionTimeoutMS: timeout, connectTimeoutMS: timeout, socketTimeoutMS: timeout, maxPoolSize: 2 };
   if (connection.tlsMode === "require") options.tls = true;
+  if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
   const client = new module.MongoClient(uri, options);
   const results = [];
@@ -705,6 +709,7 @@ async function collectMongoRuntimeTrace(input, identifier, collection = "") {
   const timeout = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
   const options = { appName: "DBridge-Portable-Trace", serverSelectionTimeoutMS: timeout, connectTimeoutMS: timeout, socketTimeoutMS: timeout, maxPoolSize: 2 };
   if (connection.tlsMode === "require") options.tls = true;
+  if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
   const client = new module.MongoClient(uri, options);
   const database = () => client.db(connection.database || "admin");
@@ -799,6 +804,7 @@ async function executeDirectMongo(input, sql) {
   const timeout = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
   const options = { appName: "DBridge-Portable", serverSelectionTimeoutMS: timeout, connectTimeoutMS: timeout, maxPoolSize: 2 };
   if (connection.tlsMode === "require") options.tls = true;
+  if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
   const client = new module.MongoClient(uri, options);
   try {
@@ -894,7 +900,7 @@ async function executeDirectMongo(input, sql) {
 async function executeDirectPostgres(input, sql) {
   const connection = normalizeDatabaseConnection(input); const module = await directDriverModule(connection.engine);
   const Client = module?.Client || module?.default?.Client; if (!Client) throw new Error("The bundled PostgreSQL driver is unavailable");
-  const ssl = connection.tlsMode === "require" || (connection.engine === "redshift" && connection.tlsMode !== "disable") ? { rejectUnauthorized: true } : connection.tlsMode === "disable" ? false : undefined;
+  const ssl = connection.tlsMode === "require" || (connection.engine === "redshift" && connection.tlsMode !== "disable") ? { rejectUnauthorized: true, ...(connection.tlsServername ? { servername: connection.tlsServername } : {}) } : connection.tlsMode === "disable" ? false : undefined;
   const client = new Client({ host: connection.host, port: Number(connection.port), database: connection.database, user: connection.username || undefined, password: connection.authMode === "password" ? connection.password : undefined, ssl, connectionTimeoutMillis: Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000), statement_timeout: Math.min(Math.max(Number(input.timeoutMs || 60000), 5000), 60000), application_name: "DBridge-Portable" });
   try { await client.connect(); const result = await client.query(sql); return directResult(result.rows, `direct:${connection.engine}`, result.rowCount); }
   finally { await client.end().catch(() => {}); }
@@ -904,6 +910,7 @@ async function executeDirectMysql(input, sql) {
   const connection = normalizeDatabaseConnection(input); const module = await directDriverModule(connection.engine);
   if (!module?.createConnection) throw new Error("The bundled MySQL/MariaDB driver is unavailable");
   const options = { host: connection.host, port: Number(connection.port), database: connection.database || undefined, user: connection.username || undefined, password: connection.password, connectTimeout: Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000), rowsAsArray: false, multipleStatements: false };
+  if (connection.tlsServername) { options.host = connection.tlsServername; options.stream = () => connectTcp({ host: connection.host, port: Number(connection.port) }); }
   if (connection.tlsMode === "require") options.ssl = { rejectUnauthorized: true, minVersion: "TLSv1.2" };
   if (connection.tlsMode === "disable") options.ssl = undefined;
   const client = await module.createConnection(options);
@@ -926,7 +933,7 @@ async function executeDirectSqlServer(input, sql) {
   const connection = normalizeDatabaseConnection(input); const module = await directDriverModule(connection.engine);
   if (!module?.Connection || !module?.Request) throw new Error("The bundled SQL Server driver is unavailable");
   const timeout = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
-  const client = new module.Connection({ server: connection.host, authentication: { type: "default", options: { userName: connection.username, password: connection.password } }, options: { port: Number(connection.port), database: connection.database || "master", encrypt: connection.engine === "synapse" || connection.tlsMode !== "disable", trustServerCertificate: false, connectTimeout: timeout, requestTimeout: timeout, rowCollectionOnRequestCompletion: false } });
+  const client = new module.Connection({ server: connection.host, authentication: { type: "default", options: { userName: connection.username, password: connection.password } }, options: { port: Number(connection.port), database: connection.database || "master", encrypt: connection.engine === "synapse" || connection.tlsMode !== "disable", trustServerCertificate: false, serverName: connection.tlsServername || undefined, connectTimeout: timeout, requestTimeout: timeout, rowCollectionOnRequestCompletion: false } });
   const rows = [];
   try {
     await new Promise((resolveConnect, rejectConnect) => client.connect((error) => error ? rejectConnect(error) : resolveConnect()));
@@ -1052,7 +1059,7 @@ async function directDatabaseCatalog(input) {
   if (connection.engine === "mongodb") {
     const module = await directDriverModule("mongodb");
     const auth = connection.authMode === "password" && connection.username ? `${encodeURIComponent(connection.username)}:${encodeURIComponent(connection.password)}@` : "";
-    const client = new module.MongoClient(`mongodb://${auth}${connection.host}:${connection.port}/${connection.database || "admin"}`, { appName: "DBridge-Portable", serverSelectionTimeoutMS: 30000, connectTimeoutMS: 30000, maxPoolSize: 2, ...(connection.tlsMode === "require" ? { tls: true } : connection.tlsMode === "disable" ? { tls: false } : {}) });
+    const client = new module.MongoClient(`mongodb://${auth}${connection.host}:${connection.port}/${connection.database || "admin"}`, { appName: "DBridge-Portable", serverSelectionTimeoutMS: 30000, connectTimeoutMS: 30000, maxPoolSize: 2, ...(connection.tlsMode === "require" ? { tls: true } : connection.tlsMode === "disable" ? { tls: false } : {}), ...(connection.tlsServername ? { servername: connection.tlsServername } : {}) });
     try {
       await client.connect();
       const collections = await client.db(connection.database || "admin").listCollections({}, { nameOnly: true }).toArray();
@@ -2206,6 +2213,7 @@ async function openMongoStudioConnection(input, appName = "DBridge-MongoDB-Studi
   const timeout = Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000);
   const options = { appName, serverSelectionTimeoutMS: timeout, connectTimeoutMS: timeout, socketTimeoutMS: timeout, maxPoolSize: 4 };
   if (connection.tlsMode === "require") options.tls = true;
+  if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
   const client = new module.MongoClient(uri, options);
   await client.connect();

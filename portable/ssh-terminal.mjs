@@ -359,6 +359,8 @@ export async function openSshLocalForward(sessionId, input) {
   };
   const server = createTcpServer((socket) => {
     forwarding.sockets.add(socket);
+    touch(session);
+    socket.on("data", () => touch(session));
     socket.on("close", () => forwarding.sockets.delete(socket));
     socket.on("error", () => { /* the socket closes itself */ });
     session.client.forwardOut("127.0.0.1", Number(socket.remotePort) || 0, target.remoteHost, target.remotePort, (error, stream) => {

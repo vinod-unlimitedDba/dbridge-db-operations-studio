@@ -1,0 +1,865 @@
+/*
+ * DBridge light workspace theme.
+ * Keeps the dense operations layout while presenting it as a modern data platform:
+ * white work surfaces, cool slate typography, subtle borders, and accessible blue actions.
+ */
+:root {
+  --bg: #f4f7fb;
+  --rail: #ffffff;
+  --panel: #ffffff;
+  --line: #dbe3ee;
+  --soft: #e8edf4;
+  --text: #172033;
+  --muted: #64748b;
+  --cyan: #2563eb;
+  --green: #059669;
+  --amber: #d97706;
+  --red: #dc2626;
+  --rail-w: 218px;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --surface-blue: #eff6ff;
+  --blue: #2563eb;
+  --blue-strong: #1d4ed8;
+  --ink: #172033;
+  --ink-soft: #475569;
+  --border: #dbe3ee;
+  --shadow: 0 10px 30px rgb(15 23 42 / 7%);
+}
+
+html,
+body {
+  background: var(--bg) !important;
+  color: var(--ink) !important;
+  color-scheme: light;
+}
+
+body {
+  letter-spacing: -0.005em;
+}
+
+button,
+input,
+select,
+textarea {
+  color-scheme: light !important;
+}
+
+::selection {
+  background: #bfdbfe;
+  color: #172033;
+}
+
+.ops-shell {
+  background:
+    radial-gradient(circle at 82% -8%, rgb(37 99 235 / 7%), transparent 30%),
+    linear-gradient(180deg, #f8fafc 0, #f4f7fb 220px) !important;
+}
+
+.ops-rail {
+  border-color: var(--border) !important;
+  background: rgb(255 255 255 / 96%) !important;
+  box-shadow: 8px 0 30px rgb(15 23 42 / 4%);
+  backdrop-filter: blur(18px);
+}
+
+.ops-brand {
+  border-bottom: 1px solid #edf1f6;
+}
+
+.ops-brand > span {
+  border: 1px solid #bfdbfe !important;
+  background: linear-gradient(145deg, #2563eb, #0891b2) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 20px rgb(37 99 235 / 20%) !important;
+}
+
+.ops-brand b,
+.ops-brand small,
+.rail-foot b,
+.agent-card b {
+  color: var(--ink) !important;
+}
+
+.ops-brand small,
+.rail-foot small,
+.agent-card small,
+.environment-picker > span,
+.ops-rail nav > p {
+  color: #7c8ba1 !important;
+}
+
+.environment-picker select,
+.ops-shell input,
+.ops-shell select,
+.ops-shell textarea {
+  border-color: #cfd9e6 !important;
+  background: #ffffff !important;
+  color: var(--ink) !important;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 3%);
+}
+
+.ops-shell input::placeholder,
+.ops-shell textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.ops-shell input:focus,
+.ops-shell select:focus,
+.ops-shell textarea:focus {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 10%) !important;
+}
+
+.ops-rail nav button {
+  color: #64748b !important;
+}
+
+.ops-rail nav button:hover {
+  background: #f1f5f9 !important;
+  color: #172033 !important;
+}
+
+.ops-rail nav button.active {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  box-shadow: inset 3px 0 #2563eb !important;
+}
+
+.ops-rail nav button > i,
+.ops-rail nav em {
+  border-color: #dbe3ee !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
+}
+
+.ops-rail nav button.active > i {
+  border-color: #bfdbfe !important;
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.agent-card {
+  border-color: #dbe3ee !important;
+  background: linear-gradient(145deg, #ffffff, #f8fafc) !important;
+  box-shadow: 0 5px 18px rgb(15 23 42 / 5%);
+}
+
+.agent-card footer span,
+.rail-foot > span {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+.rail-foot {
+  border-color: #e5eaf1 !important;
+}
+
+.ops-topbar {
+  border-color: var(--border) !important;
+  background: rgb(255 255 255 / 92%) !important;
+  box-shadow: 0 5px 20px rgb(15 23 42 / 4%);
+  backdrop-filter: blur(18px);
+}
+
+.ops-topbar > div {
+  color: #94a3b8 !important;
+}
+
+.ops-topbar > div strong,
+.ops-topbar > aside > span,
+.ops-topbar .workspace-wide-toggle b,
+.ops-topbar .keep-pass-global b {
+  color: #334155 !important;
+}
+
+.ops-topbar > button {
+  border-color: #dbe3ee !important;
+  background: #f8fafc !important;
+  color: #64748b !important;
+}
+
+.ops-topbar > button:hover {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+.ops-topbar kbd {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+  color: #64748b !important;
+}
+
+.ops-scroll {
+  padding: 24px 28px 54px;
+}
+
+.studio-heading p,
+.simple-heading p {
+  color: #2563eb !important;
+}
+
+.studio-heading h1,
+.simple-heading h1,
+.studio-context-title b,
+.module-head h2,
+.diagnostic-head h2,
+.mongo-head h2,
+.kargo-head h2 {
+  color: #0f172a !important;
+}
+
+.studio-heading > div:first-child > span,
+.simple-heading > span,
+.studio-heading small,
+.ops-shell small {
+  color: #64748b;
+}
+
+.studio-heading > div:last-child {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+  box-shadow: 0 5px 18px rgb(15 23 42 / 5%);
+}
+
+.studio-heading > div:last-child > span {
+  border-color: #e8edf4 !important;
+}
+
+.panel-dark,
+.studio-module,
+.studio-context-strip,
+.studio-readiness,
+.feature-cards article,
+.sql-context-card,
+.methodology-card,
+.ops-methodology,
+.tool-inventory,
+.library-summary {
+  border-color: var(--border) !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: var(--shadow) !important;
+}
+
+.db-connector > header,
+.catalog-browser,
+.catalog-browser > header,
+.ide-tabs,
+.ide-toolbar,
+.result-panel > header {
+  border-color: #e5eaf1 !important;
+  background: #ffffff !important;
+}
+
+.db-connector > header > div > span,
+.catalog-browser > header > div > span,
+.catalog-browser > div > button > i,
+.command-palette > button > i {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.db-connector header b,
+.catalog-browser header b,
+.connection-message b,
+.ide-tabs > div button.active,
+.result-placeholder b {
+  color: #172033 !important;
+}
+
+.db-connector header small,
+.catalog-browser header small,
+.connector-form label,
+.catalog-browser > div small,
+.result-panel > header button,
+.ide-tabs > div button,
+.ide-toolbar button,
+.connection-message small {
+  color: #64748b !important;
+}
+
+.db-connector > header > em,
+.capability-list span,
+.autofill-row span {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+
+.db-connector > header > em.connected,
+.connection-message.connected,
+.capability-list span.ready {
+  border-color: #a7f3d0 !important;
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+.db-connector > header > em.failed,
+.connection-message.failed,
+.agent-warning {
+  border-color: #fecaca !important;
+  background: #fff1f2 !important;
+  color: #b91c1c !important;
+}
+
+.db-connector > header > em.connecting {
+  background: #fff7ed !important;
+  color: #b45309 !important;
+}
+
+.profile-actions button,
+.autofill-row button,
+.secondary,
+.catalog-browser > header button,
+.ops-shell button.secondary {
+  border-color: #cfd9e6 !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+}
+
+.profile-actions button:hover,
+.autofill-row button:hover,
+.secondary:hover,
+.catalog-browser > header button:hover {
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.primary,
+.ops-shell button.primary,
+.ide-toolbar button.run {
+  border-color: #2563eb !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgb(37 99 235 / 16%);
+}
+
+.primary:hover,
+.ops-shell button.primary:hover,
+.ide-toolbar button.run:hover {
+  background: #1d4ed8 !important;
+}
+
+.connection-message,
+.db-jump-panel,
+.db-jump-evidence,
+.db-jump-route,
+.safety-note,
+.engine-intelligence-studio .notice,
+.mongo-note {
+  border-color: #dbe3ee !important;
+  background: #f8fafc !important;
+}
+
+.db-jump-toggle,
+.kp-jump-toggle,
+.credential-session-toggle,
+.devops-remember,
+.ssh-remember-credential {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+.catalog-browser > label,
+.result-filter,
+.sql-history,
+.sql-scripts,
+.completion-menu {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+}
+
+.catalog-browser > div > button {
+  color: #475569 !important;
+}
+
+.catalog-browser > div > button:hover,
+.completion-menu button:hover {
+  background: #f1f5f9 !important;
+  color: #172033 !important;
+}
+
+.ide-tabs > div button.active {
+  background: #eff6ff !important;
+  box-shadow: inset 0 -2px #2563eb;
+}
+
+.ide-toolbar button:hover {
+  background: #f1f5f9 !important;
+  color: #172033 !important;
+}
+
+.code-editor,
+.message-output,
+.log-output,
+.command-output,
+.raw-evidence,
+.kube-detail-output {
+  border-color: #e2e8f0 !important;
+  background: #fbfdff !important;
+  color: #334155 !important;
+}
+
+.code-editor > pre {
+  border-color: #e2e8f0 !important;
+  background: #f8fafc !important;
+  color: #94a3b8 !important;
+}
+
+.code-editor > textarea {
+  background: #fbfdff !important;
+  color: #172033 !important;
+  box-shadow: none !important;
+}
+
+.completion-menu {
+  box-shadow: 0 18px 45px rgb(15 23 42 / 14%) !important;
+}
+
+.completion-menu button,
+.dynamic-grid td,
+.dynamic-grid th {
+  color: #475569 !important;
+}
+
+.dynamic-grid th,
+.ops-resource-table > header,
+.migration-object-table > header,
+.epi-delta-table > header,
+.oracle-evidence-table > header {
+  border-color: #dbe3ee !important;
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+.dynamic-grid td,
+.ops-resource-table > article,
+.migration-object-table > article,
+.epi-delta-table > article,
+.oracle-evidence-table > article {
+  border-color: #e8edf4 !important;
+  background: #ffffff !important;
+  color: #475569 !important;
+}
+
+.dynamic-grid tr:hover td,
+.ops-resource-table > article:hover {
+  background: #f8fafc !important;
+}
+
+.result-panel > header button.active {
+  border-bottom-color: #2563eb !important;
+  color: #1d4ed8 !important;
+}
+
+.result-panel > header button em,
+.ide-tabs aside > b {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+.result-placeholder,
+.grid-empty,
+.module-empty,
+.diagnostic-empty,
+.mongo-empty,
+.kargo-detail-empty,
+.epi-no-plan,
+.epi-no-findings {
+  color: #64748b !important;
+}
+
+.result-placeholder > span,
+.module-empty > span,
+.diagnostic-empty > span,
+.mongo-empty > span {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.feature-cards article > span {
+  color: #2563eb !important;
+}
+
+.feature-cards article b,
+.feature-cards article small {
+  color: #334155 !important;
+}
+
+.command-backdrop {
+  background: rgb(15 23 42 / 25%) !important;
+}
+
+.command-palette {
+  border-color: #cfd9e6 !important;
+  background: #ffffff !important;
+  box-shadow: 0 28px 80px rgb(15 23 42 / 20%) !important;
+}
+
+.command-palette > label {
+  border-color: #e2e8f0 !important;
+  color: #64748b !important;
+}
+
+.command-palette > button {
+  color: #334155 !important;
+}
+
+.command-palette > button:hover {
+  background: #f1f5f9 !important;
+}
+
+.ops-toast {
+  border-color: #a7f3d0 !important;
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  box-shadow: 0 16px 40px rgb(15 23 42 / 12%) !important;
+}
+
+/* Shared light treatment for feature workspaces that previously carried local dark palettes. */
+:is(
+  .advanced-diagnostics,
+  .engine-intelligence-studio,
+  .mongo-studio,
+  .devops-studio,
+  .kargo-workspace,
+  .kube-lens-shell,
+  .execution-plan-investigator,
+  .performance-cockpit,
+  .xray-troubleshooter,
+  .migration-compare-builder,
+  .incident-command-center,
+  .observability-studio,
+  .ssh-tools,
+  .keep-pass-vault
+) {
+  color: var(--ink) !important;
+}
+
+:is(
+  .advanced-diagnostics,
+  .engine-intelligence-studio,
+  .mongo-studio,
+  .devops-studio,
+  .kargo-workspace,
+  .kube-lens-shell,
+  .execution-plan-investigator,
+  .performance-cockpit,
+  .xray-troubleshooter,
+  .migration-compare-builder,
+  .incident-command-center,
+  .observability-studio,
+  .ssh-tools,
+  .keep-pass-vault
+) :is(section, article, aside, nav, header, footer) {
+  border-color: #dbe3ee !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: var(--ink) !important;
+}
+
+:is(
+  .advanced-diagnostics,
+  .engine-intelligence-studio,
+  .mongo-studio,
+  .devops-studio,
+  .kargo-workspace,
+  .kube-lens-shell,
+  .execution-plan-investigator,
+  .performance-cockpit,
+  .xray-troubleshooter,
+  .migration-compare-builder,
+  .incident-command-center,
+  .observability-studio,
+  .ssh-tools,
+  .keep-pass-vault
+) :is(h1, h2, h3, b, strong) {
+  color: #172033 !important;
+}
+
+:is(
+  .advanced-diagnostics,
+  .engine-intelligence-studio,
+  .mongo-studio,
+  .devops-studio,
+  .kargo-workspace,
+  .kube-lens-shell,
+  .execution-plan-investigator,
+  .performance-cockpit,
+  .xray-troubleshooter,
+  .migration-compare-builder,
+  .incident-command-center,
+  .observability-studio,
+  .ssh-tools,
+  .keep-pass-vault
+) :is(p, small, em) {
+  color: #64748b !important;
+}
+
+:is(
+  .advanced-diagnostics,
+  .engine-intelligence-studio,
+  .mongo-studio,
+  .devops-studio,
+  .kargo-workspace,
+  .kube-lens-shell,
+  .execution-plan-investigator,
+  .performance-cockpit,
+  .xray-troubleshooter,
+  .migration-compare-builder,
+  .incident-command-center,
+  .observability-studio,
+  .ssh-tools,
+  .keep-pass-vault
+) button:not(.primary):not(.danger-action) {
+  border-color: #cfd9e6 !important;
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #475569 !important;
+}
+
+:is(
+  .advanced-diagnostics,
+  .engine-intelligence-studio,
+  .mongo-studio,
+  .devops-studio,
+  .kargo-workspace,
+  .kube-lens-shell,
+  .execution-plan-investigator,
+  .performance-cockpit,
+  .xray-troubleshooter,
+  .migration-compare-builder,
+  .incident-command-center,
+  .observability-studio,
+  .ssh-tools,
+  .keep-pass-vault
+) button:not(.primary):not(.danger-action):hover {
+  border-color: #93c5fd !important;
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+:is(.module-tabs, .diagnostic-tabs, .mongo-tabs, .devops-tabs, .observe-tabs, .studio-tool-tabs, .epi-view-tabs, .kube-view-strip, .ops-view-switcher) {
+  border-color: #dbe3ee !important;
+  background: #f8fafc !important;
+}
+
+:is(.module-tabs, .diagnostic-tabs, .mongo-tabs, .devops-tabs, .observe-tabs, .studio-tool-tabs, .epi-view-tabs, .kube-view-strip, .ops-view-switcher) button.active {
+  border-color: #bfdbfe !important;
+  background: #ffffff !important;
+  color: #1d4ed8 !important;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 8%);
+}
+
+:is(.metric-cards, .mongo-metric-grid, .kargo-kpis, .ops-kpi-grid, .performance-metrics, .epi-scoreboard, .oracle-monitor-kpis) article {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+  background-image: none !important;
+}
+
+:is(.metric-cards, .mongo-metric-grid, .kargo-kpis, .ops-kpi-grid, .performance-metrics, .epi-scoreboard, .oracle-monitor-kpis) article b {
+  color: #0f172a !important;
+}
+
+.ops-resource-rail,
+.ops-resource-canvas,
+.ops-inventory-tree,
+.ops-visual-workspace,
+.kube-detail-panel,
+.kargo-main,
+.kargo-artifact-matrix,
+.kargo-pipeline-canvas,
+.mongo-body,
+.diagnostic-body,
+.module-body,
+.observability-studio,
+.epi-plan-canvas,
+.epi-findings,
+.epi-input-grid > section,
+.epi-tree > article,
+.oracle-flow-view,
+.oracle-monitor-view,
+.oracle-node-inspector,
+.ssh-tools,
+.keep-pass-vault {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: var(--shadow);
+}
+
+.ops-canvas-head,
+.ops-resource-rail > header,
+.ops-resource-rail > footer,
+.kargo-head,
+.mongo-head,
+.diagnostic-head,
+.module-head,
+.epi-hero,
+.epi-toolbar,
+.oracle-flow-head,
+.oracle-monitor-view > header,
+.ssh-titlebar,
+.ssh-toolbar,
+.ssh-statusbar,
+.kp-head {
+  border-color: #e2e8f0 !important;
+  background: #f8fafc !important;
+  background-image: none !important;
+}
+
+.ops-resource-rail nav > div.active,
+.ops-section-list article:hover,
+.kargo-stage-detail,
+.kargo-stage-lane:hover,
+.mongo-list button:hover,
+.ssh-connection-tree button:hover,
+.kp-entry-list button:hover {
+  border-color: #bfdbfe !important;
+  background: #eff6ff !important;
+}
+
+.ops-canvas-head > em.live,
+.live,
+.ready,
+.success,
+.good,
+.online,
+.connected,
+.verified,
+.complete {
+  color: #047857 !important;
+}
+
+.ops-canvas-head > em.attention,
+.warning,
+.warn,
+.medium,
+.approved {
+  color: #b45309 !important;
+}
+
+.danger-action {
+  border-color: #fecaca !important;
+  background: #fff1f2 !important;
+  color: #b91c1c !important;
+}
+
+:is(.critical, .high, .failed, .error, .bad, .culprit, .hot, .missing, .removed) {
+  border-color: #fecaca !important;
+  background-color: #fff1f2 !important;
+  background-image: none !important;
+  color: #b91c1c !important;
+}
+
+:is(.warning, .warn, .medium, .approved, .attention, .changed) {
+  border-color: #fed7aa !important;
+  background-color: #fff7ed !important;
+  background-image: none !important;
+}
+
+:is(.ready, .success, .good, .online, .connected, .verified, .complete, .matched) {
+  border-color: #a7f3d0 !important;
+  background-color: #ecfdf5 !important;
+  background-image: none !important;
+}
+
+.epi-tree > article,
+.oracle-flow-canvas > button,
+.kargo-stage-lane,
+.kargo-freight-timeline > article,
+.mongo-documents article,
+.ssh-evidence article,
+.kp-entry-list button {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  color: #475569 !important;
+}
+
+.epi-tree > article:hover,
+.oracle-flow-canvas > button:hover,
+.oracle-flow-canvas > button.selected,
+.kp-entry-list button.active,
+.ssh-tabbar button.active {
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+}
+
+.epi-node-metrics,
+.epi-node-metrics span,
+.oracle-node-inspector > div > span,
+.oracle-evidence-table > article,
+.epi-delta-table > article {
+  border-color: #e2e8f0 !important;
+}
+
+.epi-raw,
+.epi-raw section,
+.epi-raw pre,
+.oracle-sql-text,
+.oracle-plan-notes {
+  border-color: #dbe3ee !important;
+  background: #f8fafc !important;
+  color: #334155 !important;
+}
+
+.ssh-tool-rail,
+.ssh-connection-tree,
+.ssh-workarea,
+.ssh-tabbar,
+.ssh-quickbar,
+.ssh-drawer-chrome,
+.ssh-statusbar,
+.ssh-library-toolbar,
+.ssh-file-list,
+.ssh-evidence,
+.kp-sidebar,
+.kp-workspace,
+.kp-editor,
+.kp-credentials,
+.kp-lock-screen {
+  border-color: #dbe3ee !important;
+  background: #ffffff !important;
+  background-image: none !important;
+}
+
+.ssh-terminal-mount {
+  border-color: #dbe3ee !important;
+  background: #f5f7f8 !important;
+}
+
+.ssh-statusbar,
+.ssh-quickbar,
+.kp-sidebar {
+  background: #f8fafc !important;
+}
+
+.kp-strength span,
+.epi-heat,
+.oracle-flow-canvas > button > em {
+  background: #e2e8f0 !important;
+}
+
+.kp-strength span.active,
+.epi-heat i,
+.oracle-flow-canvas > button > em span {
+  background: #2563eb !important;
+}
+
+.workspace-wide .ops-scroll {
+  padding-inline: 20px;
+}
+
+@media (max-width: 920px) {
+  :root { --rail-w: 72px; }
+  .ops-scroll { padding-inline: 18px; }
+}
+
+@media (max-width: 650px) {
+  :root { --rail-w: 0px; }
+  .ops-rail { box-shadow: 0 6px 20px rgb(15 23 42 / 6%); }
+  .ops-scroll { padding: 16px 10px 32px; }
+}

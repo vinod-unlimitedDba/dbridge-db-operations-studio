@@ -31,7 +31,7 @@ test("includes the secure pairing, catalog, validation, and SQL APIs",async()=>{
   for(const endpoint of ["/api/studio/pair","/api/adapters","/api/connections/check","/api/sql/catalog","/api/sql/run","/api/editor/session","/api/performance/sample","/api/performance/diagnostic-studio/catalog","/api/performance/diagnostic-studio/analyze","/api/performance/check","/api/performance/recommend","/api/performance/runtime-trace/capture","/api/performance/oracle-bottleneck/analyze","/api/performance/postgres-bottleneck/analyze","/api/performance/mongodb-bottleneck/analyze","/api/performance/relational-bottleneck/analyze","/api/performance/oracle-sql-id/check","/api/performance/plan-capture","/api/performance/plan-history","/api/logs/native","/api/logs/migration-compare","/api/logs/remote-tail","/api/logs/telemetry","/api/traces/analyze","/api/oracle/tkprof","/api/goldengate/diagnose","/api/mongodb/studio","/api/mongodb/mongosync","/api/devops/kubernetes-dashboard","/api/devops/docker-dashboard","/api/devops/kubernetes-topology","/api/devops/pipeline-runs","/api/devops/kafka-lag","/api/devops/run","/api/devops/container-action/preview","/api/terminal/ssh/open","/api/terminal/ssh/stream","/api/investigation/recordings","/api/investigation/events","/api/investigation/runbooks","/api/investigation/rules","/api/investigation/autofill-profiles"])assert.match(source,new RegExp(endpoint.replaceAll("/","\\/")));
   for(const capability of ["Unlock writes","CSV","JSON","Catalog browser","Environment autofill","Health snapshot","Tuning check","Controlled changes","Compare versions","Complete diagnostic evidence","Oracle SQL_ID X-Ray","GoldenGate","Flight recorder","Incident timeline","Cloud telemetry","Oracle TKPROF","SSH terminals"])assert.match(source,new RegExp(capability));
   assert.match(source,/localStorage\.setItem/);
-  assert.match(source,/type Profile = Omit<DbForm,"password">/);
+  assert.match(source,/type Profile = Omit<DbForm,"password"\|"jump">/);
 });
 
 test("consolidates the advanced DBridge performance workflows inside SQL Diagnostics",async()=>{
@@ -197,6 +197,29 @@ test("adds MIT-attributed Oracle plan visualization compatibility",async()=>{
   assert.equal(notice.includes("davidbudac/ora-explain-plan-viz"),true,"upstream attribution");
   assert.equal(notice.includes("MIT License"),false,"notice uses the full MIT grant rather than an incomplete label");
   assert.equal(notice.includes("Permission is hereby granted"),true,"MIT permission text");
+});
+
+test("adds verified database jump-server and bastion routing",async()=>{
+  const source=await readFile(new URL("../app/page.tsx",import.meta.url),"utf8");
+  for(const capability of ["USE JUMP SERVER / BASTION","Connect via Bastion → SQL","Inspect host key","TUNNEL ACTIVE","Verified bastion tunnel","Database connected through the verified jump server"])assert.equal(source.includes(capability),true,capability);
+  for(const implementation of ["JumpServerForm","DbJumpTunnel","inspectDatabaseJumpHost","ensureDatabaseJumpTunnel","jumpCredentialId","/api/terminal/ssh/preflight","/api/terminal/ssh/open","/api/terminal/ssh/forward/open","127.0.0.1","tlsServername"])assert.equal(source.includes(implementation),true,implementation);
+  const vault=await readFile(new URL("../app/components/KeepPassVault.tsx",import.meta.url),"utf8");
+  for(const encryptedField of ["jumpEnabled","jumpHost","jumpUsername","jumpAuthMethod","jumpPrivateKeyPath","jumpPassword","jumpPassphrase","second-hop SSH route"])assert.equal(vault.includes(encryptedField),true,encryptedField);
+  const ssh=await readFile(new URL("../portable/ssh-terminal.mjs",import.meta.url),"utf8");
+  for(const guard of ['hostVerifier','validateLocalForwardTarget','server.listen(target.requestedLocalPort, \"127.0.0.1\"','socket.on(\"data\", () => touch(session))'])assert.equal(ssh.includes(guard),true,guard);
+  const server=await readFile(new URL("../portable/server.mjs",import.meta.url),"utf8");
+  for(const tlsGuard of ['tlsServername','connectTcp','rejectUnauthorized: true','serverName: connection.tlsServername'])assert.equal(server.includes(tlsGuard),true,tlsGuard);
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  for(const selector of [".db-jump-panel",".db-jump-evidence",".db-jump-route",".kp-jump-box"])assert.equal(css.includes(selector),true,selector);
+});
+
+test("uses the white data-platform Studio theme",async()=>{
+  const layout=await readFile(new URL("../app/layout.tsx",import.meta.url),"utf8");
+  assert.equal(layout.includes('import "./light-studio.css";'),true,"light theme import");
+  const css=await readFile(new URL("../app/light-studio.css",import.meta.url),"utf8");
+  for(const token of ["--surface: #ffffff","--blue: #2563eb",".ops-rail",".ops-topbar",".code-editor",".execution-plan-investigator",".ssh-terminal-mount",".keep-pass-vault"])assert.equal(css.includes(token),true,token);
+  const ssh=await readFile(new URL("../app/components/SshWorkspace.tsx",import.meta.url),"utf8");
+  assert.equal(ssh.includes('theme:"light"'),true,"new SSH sessions default to light");
 });
 
 test("adds a KeePass-style encrypted credential and URL vault",async()=>{

@@ -41,7 +41,7 @@ const PROFILE_KEY="dbops.ssh.profiles.v2";
 const GROUP_KEY="dbops.ssh.groups.v1";
 const SETTINGS_KEY="dbops.ssh.settings.v2";
 const SNIPPET_KEY="dbops.ssh.snippets.v2";
-const defaultSettings:Settings={fontSize:13,theme:"midnight",keepaliveSeconds:30,cols:110,rows:32,toolsPinned:false,carefulPaste:true};
+const defaultSettings:Settings={fontSize:13,theme:"light",keepaliveSeconds:30,cols:110,rows:32,toolsPinned:false,carefulPaste:true};
 const defaultSnippets:Snippet[]=[
   {id:"system",name:"System identity",command:"uname -a"},
   {id:"uptime",name:"Uptime and load",command:"uptime"},

@@ -23,8 +23,11 @@ type SshSession = { sessionId:string; host:string; port:number; username:string;
 type AnyResult = Record<string,any> | null;
 type Environment = "Production" | "SIT" | "UAT-Test" | "DEV";
 type Adapter = { name:string; port:number; tier:string; family:string; auth:string; driver?:string; client?:string; available:boolean; directAvailable:boolean; clientAvailable:boolean; preferredAccess:string };
-type DbForm = { environment:Environment; engine:string; authMode:"password"|"context"; tlsMode:"prefer"|"require"|"disable"; host:string; port:string; database:string; username:string; password:string };
-type Profile = Omit<DbForm,"password"> & { id:string; name:string };
+type JumpAuthMethod = "agent"|"key"|"password";
+type JumpServerForm = { enabled:boolean; host:string; port:string; username:string; authMethod:JumpAuthMethod; privateKeyPath:string; password:string; passphrase:string };
+type DbForm = { environment:Environment; engine:string; authMode:"password"|"context"; tlsMode:"prefer"|"require"|"disable"; host:string; port:string; database:string; username:string; password:string; jump:JumpServerForm };
+type Profile = Omit<DbForm,"password"|"jump"> & { id:string; name:string; jump:Omit<JumpServerForm,"password"|"passphrase"> };
+type DbJumpTunnel = { sessionId:string; forwardId:string; localPort:number; signature:string; jumpHost:string; targetHost:string; targetPort:string };
 type SshConnectionRequest = { url:string; requestId:number; username:string; password:string; remember:boolean; autoConnect:boolean };
 type CatalogObject = { type:string; schema:string; name:string };
 type GridResult = { columns:string[]; rows:(string|number|boolean|null)[][]; raw:string; stderr:string; durationMs:number };
@@ -160,7 +163,8 @@ const opsWorkspaceViews:Record<string,Record<string,string[]>>={
   git:{overview:["status","branches","remotes","commits","diff"],status:["status","remotes"],branches:["branches","remotes"],commits:["commits"],diff:["diff","status"]},
   ansible:{overview:["version","config","inventory","graph"],inventory:["inventory"],topology:["graph"],configuration:["config"],runtime:["version"]},
 };
-function defaultForm():DbForm{return {environment:"Production",engine:"postgres",authMode:"password",tlsMode:"require",host:"",port:"5432",database:"postgres",username:"",password:""}}
+function defaultJumpServer():JumpServerForm{return {enabled:false,host:"",port:"22",username:"",authMethod:"agent",privateKeyPath:"",password:"",passphrase:""}}
+function defaultForm():DbForm{return {environment:"Production",engine:"postgres",authMode:"password",tlsMode:"require",host:"",port:"5432",database:"postgres",username:"",password:"",jump:defaultJumpServer()}}
 function parseOutput(stdout:string,stderr:string,durationMs:number):GridResult{
   const raw=stdout||"";
   try{
@@ -487,6 +491,8 @@ export default function Home(){
   const [connectionPanelOpen,setConnectionPanelOpen]=useState(false);
   const [connectionMessage,setConnectionMessage]=useState("Enter an approved target and validate access.");
   const [connectionFingerprint,setConnectionFingerprint]=useState("");
+  const [jumpEvidence,setJumpEvidence]=useState<AnyResult>(null);
+  const [activeDbTunnel,setActiveDbTunnel]=useState<DbJumpTunnel|null>(null);
   const [catalog,setCatalog]=useState<CatalogObject[]>([]);
   const [catalogFilter,setCatalogFilter]=useState("");
   const [catalogLoading,setCatalogLoading]=useState(false);
@@ -658,11 +664,12 @@ export default function Home(){
   const editorRef=useRef<HTMLTextAreaElement>(null);
   const recorderTimer=useRef<number|null>(null);
   const connectionPanelTimer=useRef<number|null>(null);
+  const dbTunnelRef=useRef<DbJumpTunnel|null>(null);
   const sshStreams=useRef<Record<string,AbortController>>({});
 
   const notify=(message:string)=>{setToast("");window.setTimeout(()=>setToast(message),10)};
   const toggleWorkspaceWide=()=>setWorkspaceWide(current=>{const next=!current;localStorage.setItem("dbops.workspace-wide.v1",String(next));notify(next?"Wide workspace enabled":"Standard workspace restored");return next});
-  const fingerprint=(value=form,credentialId=activeCredentialId)=>JSON.stringify({...value,password:credentialId?"vault":Boolean(value.password),credentialId});
+  const fingerprint=(value=form,credentialId=activeCredentialId)=>JSON.stringify({environment:value.environment,engine:value.engine,authMode:value.authMode,tlsMode:value.tlsMode,host:value.host,port:value.port,database:value.database,username:value.username,password:credentialId?"vault":Boolean(value.password),jump:{enabled:value.jump.enabled,host:value.jump.host,port:value.jump.port,username:value.jump.username,authMethod:value.jump.authMethod,privateKeyPath:value.jump.privateKeyPath},credentialId,tunnel:dbTunnelRef.current?.sessionId||""});
   const readyCount=Object.values(adapters).filter(adapter=>adapter.available).length;
   const activeAdapter=adapters[form.engine];
   const scopedProfiles=profiles.filter(profile=>profile.environment===environment&&profile.engine===form.engine);
@@ -693,6 +700,12 @@ export default function Home(){
     const data=await response.json().catch(()=>({ok:false,error:`HTTP ${response.status}`}));
     if(!response.ok||data.ok===false)throw new Error(data.error||data.stderr||`Request failed (${response.status})`);
     return data;
+  };
+  const closeDatabaseJumpTunnel=async(silent=true)=>{
+    const tunnel=dbTunnelRef.current;if(!tunnel)return;
+    dbTunnelRef.current=null;setActiveDbTunnel(null);
+    try{await agentCall("/api/terminal/ssh/close",{method:"POST",body:JSON.stringify({sessionId:tunnel.sessionId})})}catch{/* the agent may already have expired the tunnel */}
+    if(!silent){setConnectionState("idle");setConnectionFingerprint("");setConnectionMessage("Jump-server tunnel closed. Reconnect before running database work.");notify("Database jump-server tunnel closed")}
   };
   const changeKeepPass=async(enabled:boolean)=>{
     setKeepPass(enabled);localStorage.setItem("dbops.keep-pass.v1",String(enabled));
@@ -743,7 +756,8 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
   const loadSqlScript=(script:SavedSqlScript)=>{updateSqlText(script.sql);setSqlInspectorOpen(false);notify(`${script.name} loaded into the active worksheet`)};
   const selectedStatement=()=>{const editor=editorRef.current;if(!editor)return sql.trim();const selected=sql.slice(editor.selectionStart,editor.selectionEnd).trim();return selected||sql.trim()};
   useEffect(()=>{const handler=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.altKey&&event.key.toLowerCase()==="n"){event.preventDefault();event.shiftKey?addSqlSubSheet():addSqlTab()}};window.addEventListener("keydown",handler);return()=>window.removeEventListener("keydown",handler)},[sqlTabs,activeSqlTabId,sql,form.engine]);
-  const patchForm=(patch:Partial<DbForm>)=>{setForm(value=>({...value,...patch}));if(Object.keys(patch).some(key=>key!=="password"))setActiveCredentialId("");setConnectionState("idle");setConnectionFingerprint("")};
+  const patchForm=(patch:Partial<DbForm>)=>{setForm(value=>({...value,...patch}));if(Object.keys(patch).some(key=>key!=="password")){setActiveCredentialId("");setJumpEvidence(null);void closeDatabaseJumpTunnel()}setConnectionState("idle");setConnectionFingerprint("")};
+  const patchJumpForm=(patch:Partial<JumpServerForm>)=>{setForm(value=>({...value,jump:{...value.jump,...patch}}));if(Object.keys(patch).some(key=>key!=="password"&&key!=="passphrase")){setJumpEvidence(null);void closeDatabaseJumpTunnel()}setConnectionState("idle");setConnectionFingerprint("")};
   const selectEnvironment=(next:Environment)=>{setEnvironment(next);patchForm({environment:next,tlsMode:next==="DEV"?"prefer":"require"});setProfileId("")};
   const selectEngine=(engine:string)=>{const defaults=adapterDefaults[engine];patchForm({engine,port:defaults.port,database:defaults.database,authMode:defaults.authMode,password:""});updateSqlText(sqlSamples[engine]||"SELECT *\nFROM table_name\nLIMIT 50;",engine);setCatalog([]);setProfileId("");setResult(null)};
   const applyDefaults=()=>{const defaults=adapterDefaults[form.engine];patchForm({port:defaults.port,database:defaults.database,authMode:defaults.authMode,tlsMode:environment==="DEV"?"prefer":"require",host:environment==="DEV"&&!form.host?"localhost":form.host==="localhost"&&environment!=="DEV"?"":form.host,password:""});notify(`${environment} ${defaults.name} defaults applied without secrets`)};
@@ -751,36 +765,76 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
     setProfileId(id);
     const profile=profiles.find(item=>item.id===id);
     if(!profile){setActiveCredentialId("");return}
+    await closeDatabaseJumpTunnel();
     const {id:ignoredId,name:ignoredName,...profileData}=profile;
-    const nextForm={...profileData,password:""};
-    setForm(nextForm);setEnvironment(profile.environment);setActiveCredentialId(id);setConnectionState("idle");setCatalog([]);
+    const jump={...defaultJumpServer(),...((profile as any).jump||{}),password:"",passphrase:""};
+    const nextForm:DbForm={...defaultForm(),...profileData,password:"",jump};
+    setForm(nextForm);setEnvironment(profile.environment);setActiveCredentialId(id);setConnectionState("idle");setJumpEvidence(null);setCatalog([]);
     try{
-      const data=await agentCall("/api/credentials/session/status",{method:"POST",body:JSON.stringify({scope:"database",id})});
-      if(profile.authMode==="context"||data.credential?.available){notify(`${profile.name} selected; connecting to its workspace`);await connectToWorkspace(nextForm,profile.environment,id)}
-      else{openConnectionPanel();notify(`${profile.name} selected; enter its password once, then save or connect`)}
+      const dbStatus=profile.authMode==="context"?{credential:{available:true}}:await agentCall("/api/credentials/session/status",{method:"POST",body:JSON.stringify({scope:"database",id})});
+      const needsJumpSecret=jump.enabled&&jump.authMethod==="password";
+      const jumpStatus=needsJumpSecret?await agentCall("/api/credentials/session/status",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(id)})}):{credential:{available:true}};
+      if(dbStatus.credential?.available&&jumpStatus.credential?.available){notify(profile.name+" selected; connecting through its approved route");await connectToWorkspace(nextForm,profile.environment,id)}
+      else{openConnectionPanel();notify(profile.name+" selected; enter the missing database or jump-server password")}
     }catch(error){openConnectionPanel();notify(error instanceof Error?error.message:"Saved credential status is unavailable")}
   };
   const saveProfile=async()=>{
-    if(!form.host&&!["bigquery","databricks","hana"].includes(form.engine))return notify("Enter the database host before saving a profile");
-    const name=(profileName||`${adapterDefaults[form.engine].name} · ${form.database||form.host||environment}`).trim();
-    const id=profileId||`profile-${Date.now().toString(36)}`;
-    const profile:Profile={id,name,environment:form.environment,engine:form.engine,authMode:form.authMode,tlsMode:form.tlsMode,host:form.host,port:form.port,database:form.database,username:form.username};
+    if(!form.host&&!['bigquery','databricks','hana'].includes(form.engine))return notify("Enter the database host before saving a profile");
+    if(form.jump.enabled&&(!form.jump.host.trim()||!form.jump.username.trim()))return notify("Enter the jump-server host and username before saving");
+    const name=(profileName||(adapterDefaults[form.engine].name+" · "+(form.database||form.host||environment))).trim();
+    const id=profileId||("profile-"+Date.now().toString(36));
+    const profile:Profile={id,name,environment:form.environment,engine:form.engine,authMode:form.authMode,tlsMode:form.tlsMode,host:form.host,port:form.port,database:form.database,username:form.username,jump:{enabled:form.jump.enabled,host:form.jump.host,port:form.jump.port,username:form.jump.username,authMethod:form.jump.authMethod,privateKeyPath:form.jump.privateKeyPath}};
     const remembered=keepPass&&form.authMode==="password"&&Boolean(form.password);
+    const rememberedJump=keepPass&&form.jump.enabled&&Boolean(form.jump.password||form.jump.passphrase);
     try{
-      if(remembered){await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id,username:form.username,password:form.password})});setForm(value=>({...value,password:""}))}
-      else if(!keepPass){await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id})})}
+      if(remembered)await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id,username:form.username,password:form.password})});
+      else if(!keepPass)await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id})});
+      if(rememberedJump)await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(id),username:form.jump.username,password:form.jump.password,passphrase:form.jump.passphrase})});
+      else if(!keepPass)await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(id)})});
+      if(remembered||rememberedJump)setForm(value=>({...value,password:remembered?"":value.password,jump:{...value.jump,password:rememberedJump?"":value.jump.password,passphrase:rememberedJump?"":value.jump.passphrase}}));
     }catch(error){return notify(error instanceof Error?error.message:"Credential could not be remembered")}
     const next=[profile,...profiles.filter(item=>item.id!==id)].slice(0,50);
     setProfiles(next);setProfileId(id);setActiveCredentialId(id);setProfileName("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));
-    notify(remembered?"Profile saved; password remembered until the local agent stops":"Profile metadata saved without a persistent password");
+    notify(remembered||rememberedJump?"Profile saved; database and bastion secrets remain only in agent memory":"Profile metadata saved without persistent secrets");
   };
   const deleteProfile=async()=>{
     if(!profileId)return;
-    try{await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id:profileId})})}catch{/* profile metadata can still be removed */}
+    await closeDatabaseJumpTunnel();
+    try{await Promise.all([agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id:profileId})}),agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(profileId)})})])}catch{/* profile metadata can still be removed */}
     const next=profiles.filter(item=>item.id!==profileId);
-    setProfiles(next);setProfileId("");setActiveCredentialId("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));notify("Saved profile and its session credential were deleted");
+    setProfiles(next);setProfileId("");setActiveCredentialId("");localStorage.setItem("dbops.connection.profiles.v1",JSON.stringify(next));notify("Saved profile and its volatile credentials were deleted");
   };
-  const payload=(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>({environment:targetEnvironment,engine:value.engine,connection:{host:value.host.trim(),port:value.port.trim(),database:value.database.trim(),username:value.username.trim(),password:value.password,credentialId:credentialId||undefined,authMode:value.authMode,tlsMode:value.tlsMode}});
+  const jumpCredentialId=(id:string)=>id?("dbjump-"+id).slice(0,128):"";
+  const jumpSignature=(value:DbForm)=>JSON.stringify({targetHost:value.host.trim(),targetPort:value.port.trim(),jumpHost:value.jump.host.trim(),jumpPort:value.jump.port.trim()||"22",jumpUser:value.jump.username.trim(),jumpAuth:value.jump.authMethod,jumpKey:value.jump.privateKeyPath.trim()});
+  const tunnelMatches=(value:DbForm)=>Boolean(value.jump.enabled&&dbTunnelRef.current&&dbTunnelRef.current.signature===jumpSignature(value));
+  const jumpPayload=(value:DbForm,credentialId="",includeSecrets=true)=>({environment:value.environment,host:value.jump.host.trim(),port:value.jump.port.trim()||"22",username:value.jump.username.trim(),authMethod:value.jump.authMethod,privateKeyPath:value.jump.privateKeyPath.trim(),credentialId:jumpCredentialId(credentialId)||undefined,keepaliveSeconds:30,cols:80,rows:24,...(includeSecrets?{password:value.jump.password,passphrase:value.jump.passphrase}:{})});
+  const inspectDatabaseJumpHost=async(value=form)=>{
+    if(!value.jump.enabled)throw new Error("Enable the jump server first");
+    const data=await agentCall("/api/terminal/ssh/preflight",{method:"POST",body:JSON.stringify(jumpPayload(value,"",false))});
+    if(!data.target?.fingerprint||!data.target?.trustStatus)throw new Error("The jump server did not present a usable host key");
+    setJumpEvidence(data.target);
+    if(data.target.trustStatus==="changed")throw new Error("Jump-server host key changed. Connection is blocked until the old pin is verified and removed in SSH Terminal.");
+    notify(data.target.trustStatus==="trusted"?"Pinned jump-server host key matched":"New jump-server host key is ready for approval");
+    return data.target;
+  };
+  const ensureDatabaseJumpTunnel=async(value:DbForm,credentialId=activeCredentialId)=>{
+    if(!value.jump.enabled){await closeDatabaseJumpTunnel();return null}
+    if(tunnelMatches(value))return dbTunnelRef.current;
+    if(!value.host.trim()||!value.port.trim())throw new Error("Enter the database host and port before opening the bastion tunnel");
+    if(!value.jump.host.trim()||!value.jump.username.trim())throw new Error("Enter the jump-server host and username");
+    await closeDatabaseJumpTunnel();
+    const inspected=await inspectDatabaseJumpHost(value);
+    const trustHostKey=inspected.trustStatus==="new";
+    if(trustHostKey&&!window.confirm("First connection to "+inspected.host+":"+inspected.port+".\n\nTrust and pin this jump-server host key?\n"+inspected.keyType+"\n"+inspected.fingerprint+"\n\nNo credential has been sent yet."))throw new Error("Jump-server connection cancelled before authentication");
+    const opened=await agentCall("/api/terminal/ssh/open",{method:"POST",body:JSON.stringify({...jumpPayload(value,credentialId,true),trustHostKey,hostFingerprint:inspected.fingerprint,hostKeyType:inspected.keyType})});
+    try{
+      const data=await agentCall("/api/terminal/ssh/forward/open",{method:"POST",body:JSON.stringify({sessionId:opened.sessionId,localPort:0,remoteHost:value.host.trim(),remotePort:value.port.trim()})});
+      if(!data.forward?.localPort)throw new Error("The local agent did not return a database tunnel");
+      const tunnel:DbJumpTunnel={sessionId:opened.sessionId,forwardId:data.forward.forwardId,localPort:Number(data.forward.localPort),signature:jumpSignature(value),jumpHost:value.jump.host.trim(),targetHost:value.host.trim(),targetPort:value.port.trim()};
+      dbTunnelRef.current=tunnel;setActiveDbTunnel(tunnel);return tunnel;
+    }catch(error){try{await agentCall("/api/terminal/ssh/close",{method:"POST",body:JSON.stringify({sessionId:opened.sessionId})})}catch{/* failed tunnel session already closed */}throw error}
+  };
+  const payload=(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{const tunnel=tunnelMatches(value)?dbTunnelRef.current:null;return {environment:targetEnvironment,engine:value.engine,connection:{host:tunnel?"127.0.0.1":value.host.trim(),port:tunnel?String(tunnel.localPort):value.port.trim(),database:value.database.trim(),username:value.username.trim(),password:value.password,credentialId:credentialId||undefined,authMode:value.authMode,tlsMode:value.tlsMode,tlsServername:tunnel?value.host.trim():undefined},transport:tunnel?{type:"ssh-bastion",jumpHost:tunnel.jumpHost,targetHost:tunnel.targetHost,targetPort:tunnel.targetPort,localPort:tunnel.localPort}:{type:"direct"}}};
 
   const loadCatalog=async(silent=false,value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
     setCatalogLoading(true);
@@ -790,13 +844,14 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
   };
   const connect=async(loadObjects=true,value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
     if(agentState!=="online"){notify("Start the local database agent before connecting");return false}
-    setConnectionState("connecting");setConnectionMessage("Validating driver, network, TLS, identity, and permissions…");
+    setConnectionState("connecting");setConnectionMessage(value.jump.enabled?"Verifying bastion, opening a loopback tunnel, then validating the database…":"Validating driver, network, TLS, identity, and permissions…");
     try{
+      const tunnel=await ensureDatabaseJumpTunnel(value,credentialId);
       const data=await agentCall("/api/connections/check",{method:"POST",body:JSON.stringify({...payload(value,targetEnvironment,credentialId),timeoutMs:30000})});
-      setConnectionState("connected");setConnectionFingerprint(fingerprint(value,credentialId));setConnectionMessage(`${data.adapter?.name||adapterDefaults[value.engine].name} ready · ${data.durationMs} ms · ${data.access} access`);notify("Database connection validated");
+      setConnectionState("connected");setConnectionFingerprint(fingerprint(value,credentialId));setConnectionMessage((data.adapter?.name||adapterDefaults[value.engine].name)+" ready · "+data.durationMs+" ms · "+data.access+" access"+(tunnel?" · via "+tunnel.jumpHost+" on 127.0.0.1:"+tunnel.localPort:""));notify(tunnel?"Database connected through the verified jump server":"Database connection validated");
       if(loadObjects)await loadCatalog(true,value,targetEnvironment,credentialId);
       return true
-    }catch(error){const message=error instanceof Error?error.message:"Connection failed";setConnectionState("failed");setConnectionMessage(message);notify(message);return false}
+    }catch(error){await closeDatabaseJumpTunnel();const message=error instanceof Error?error.message:"Connection failed";setConnectionState("failed");setConnectionMessage(message);notify(message);return false}
   };
   const connectToWorkspace=async(value=form,targetEnvironment=environment,credentialId=activeCredentialId)=>{
     const destination:StudioTool=value.engine==="mongodb"?"mongodb":"sql";
@@ -805,14 +860,20 @@ useEffect(()=>{if(!agentToken)return;agentCall("/api/tools/status").then(data=>s
       try{
         if(keepPass&&value.password)await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id:credentialId,username:value.username,password:value.password})});
         else if(!keepPass)await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"database",id:credentialId})});
-      }catch(error){return notify(error instanceof Error?error.message:"Credential memory could not be updated")}
+      }catch(error){return notify(error instanceof Error?error.message:"Database credential memory could not be updated")}
+    }
+    if(credentialId&&value.jump.enabled){
+      try{
+        if(keepPass&&(value.jump.password||value.jump.passphrase))await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(credentialId),username:value.jump.username,password:value.jump.password,passphrase:value.jump.passphrase})});
+        else if(!keepPass)await agentCall("/api/credentials/session/delete",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(credentialId)})});
+      }catch(error){return notify(error instanceof Error?error.message:"Jump-server credential memory could not be updated")}
     }
     const connected=await connect(true,value,targetEnvironment,credentialId);
     if(!connected){openConnectionPanel();return}
-    if(credentialId&&value.password)setForm(current=>({...current,password:""}));
+    setForm(current=>({...current,password:credentialId&&value.password?"":current.password,jump:{...current.jump,password:"",passphrase:""}}));
     setConnectionPanelOpen(false);
     if(destination==="sql")requestAnimationFrame(()=>editorRef.current?.focus());
-    notify(`${adapterDefaults[value.engine].name} connected; ${destination==="sql"?"SQL Workspace":"MongoDB Studio"} ready`);
+    notify(adapterDefaults[value.engine].name+" connected"+(value.jump.enabled?" through bastion":"")+"; "+(destination==="sql"?"SQL Workspace":"MongoDB Studio")+" ready");
   };  const runSql=async(mode:"selected"|"all"|"explain"="selected",overrideSql="")=>{
     let statement=(overrideSql.trim()||(mode==="all"?sql.trim():selectedStatement())).replace(/\s+$/,"");
     if(!statement)return notify("Enter a SQL statement first");
@@ -1015,19 +1076,22 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
     if(agentState!=="online")return notify("Start the local database agent before connecting from Keep Pass");
     const targetEnvironment=(environments.includes(entry.environment as Environment)?entry.environment:environment) as Environment;
     const defaults=adapterDefaults[entry.engine];if(!defaults)return notify("This vault entry uses an unsupported database engine");
-    const credentialId=`vault-${entry.id}`.slice(0,128);
+    const credentialId=("vault-"+entry.id).slice(0,128);
     try{
+      await closeDatabaseJumpTunnel();
       if(entry.password)await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"database",id:credentialId,username:entry.username,password:entry.password})});
-      const value:DbForm={environment:targetEnvironment,engine:entry.engine,authMode:entry.password?"password":"context",tlsMode:entry.tlsMode||"require",host:entry.host,port:entry.port||defaults.port,database:entry.database||defaults.database,username:entry.username,password:""};
-      setEnvironment(targetEnvironment);setForm(value);setProfileId("");setActiveCredentialId(entry.password?credentialId:"");setConnectionState("idle");setConnectionFingerprint("");setCatalog([]);
+      if(entry.jumpEnabled&&(entry.jumpPassword||entry.jumpPassphrase))await agentCall("/api/credentials/session",{method:"POST",body:JSON.stringify({scope:"ssh",id:jumpCredentialId(credentialId),username:entry.jumpUsername,password:entry.jumpPassword,passphrase:entry.jumpPassphrase})});
+      const value:DbForm={environment:targetEnvironment,engine:entry.engine,authMode:entry.password?"password":"context",tlsMode:entry.tlsMode||"require",host:entry.host,port:entry.port||defaults.port,database:entry.database||defaults.database,username:entry.username,password:"",jump:{enabled:Boolean(entry.jumpEnabled),host:entry.jumpHost||"",port:entry.jumpPort||"22",username:entry.jumpUsername||"",authMethod:entry.jumpAuthMethod||"agent",privateKeyPath:entry.jumpPrivateKeyPath||"",password:"",passphrase:""}};
+      const connectionCredentialId=entry.password||entry.jumpPassword||entry.jumpPassphrase?credentialId:"";
+      setEnvironment(targetEnvironment);setForm(value);setProfileId("");setActiveCredentialId(connectionCredentialId);setConnectionState("idle");setConnectionFingerprint("");setJumpEvidence(null);setCatalog([]);
       const destination:StudioTool=entry.engine==="mongodb"?"mongodb":"sql";setStudioTool(destination);
-      const connected=await connect(true,value,targetEnvironment,entry.password?credentialId:"");if(!connected){openConnectionPanel();return}
-      setConnectionPanelOpen(false);if(destination==="sql")requestAnimationFrame(()=>editorRef.current?.focus());notify(`${defaults.name} connected from Keep Pass`);
+      const connected=await connect(true,value,targetEnvironment,connectionCredentialId);if(!connected){openConnectionPanel();return}
+      setConnectionPanelOpen(false);if(destination==="sql")requestAnimationFrame(()=>editorRef.current?.focus());notify(defaults.name+" connected from Keep Pass"+(entry.jumpEnabled?" through bastion":""));
     }catch(error){notify(error instanceof Error?error.message:"Keep Pass database launch failed")}
   };
   const launchVaultSsh=(entry:KeepPassEntry)=>{const host=entry.host.trim();if(!host&&!entry.url.trim())return notify("This SSH vault entry has no hostname or URL");const url=entry.url.trim()||`ssh://${host}:${entry.port||"22"}`;setStudioTool("devops");setDevopsMode("ssh");setDevopsData(null);setSshConnectionRequest({url,requestId:Date.now(),username:entry.username,password:entry.password,remember:true,autoConnect:true});notify("Keep Pass sent the SSH target for host-key inspection and connection")};
   const launchVaultDevops=(entry:KeepPassEntry)=>passDevopsUrl(entry.url,entry.username,entry.password);
-  const clearVaultRuntimeCredentials=()=>{setForm(current=>({...current,password:""}));setDevopsPassword("");setMirrorPassword("");if(agentToken)void agentCall("/api/credentials/session/clear",{method:"POST",body:"{}"}).catch(()=>{})};
+  const clearVaultRuntimeCredentials=()=>{void closeDatabaseJumpTunnel();setForm(current=>({...current,password:"",jump:{...current.jump,password:"",passphrase:""}}));setConnectionState("idle");setConnectionFingerprint("");setDevopsPassword("");setMirrorPassword("");if(agentToken)void agentCall("/api/credentials/session/clear",{method:"POST",body:"{}"}).catch(()=>{})};
   const compareToolVersions=async(save=false)=>{
     setDevopsBusy(true);setDevopsData(null);
     try{const data=await agentCall("/api/devops/"+(save?"version-baseline":"version-comparison"),save?{method:"POST",body:"{}"}:{});setDevopsData(data);notify(save?"DevOps version baseline saved":"Tool versions compared")}
@@ -1361,15 +1425,19 @@ const copyResult=async()=>{if(!result)return;const content=result.columns.length
                 <label>DATABASE / SERVICE<input value={form.database} onChange={event=>patchForm({database:event.target.value})} placeholder="Database, service, project, or warehouse"/></label>
                 <label>USERNAME / PROFILE<input autoComplete="username" value={form.username} onChange={event=>patchForm({username:event.target.value})}/></label>
                 {form.authMode==="password"&&<><label>PASSWORD<input type="password" autoComplete="current-password" value={form.password} onChange={event=>patchForm({password:event.target.value})} onKeyDown={event=>{if(event.key==="Enter"){event.preventDefault();connectToWorkspace()}}}/></label><label className="credential-session-toggle"><input type="checkbox" checked={keepPass} onChange={event=>changeKeepPass(event.target.checked)}/><span><b>Remember until agent stops</b><small>Stored only in volatile local-agent memory; never in the browser profile.</small></span></label></>}
-                <div className="connector-buttons"><button className="secondary" onClick={applyDefaults}>Reset defaults</button><button className="primary" onClick={()=>connectToWorkspace()} disabled={connectionState==="connecting"}>{connectionState==="connecting"?"Validating…":form.engine==="mongodb"?"Connect → MongoDB Studio":"Connect → SQL Workspace"}</button></div>
+                <section className={"db-jump-panel "+(form.jump.enabled?"enabled":"")}>
+                  <label className="db-jump-toggle"><input type="checkbox" checked={form.jump.enabled} onChange={event=>patchJumpForm({enabled:event.target.checked})}/><span><b>USE JUMP SERVER / BASTION</b><small>Verified SSH tunnel bound only to 127.0.0.1</small></span><em>{activeDbTunnel?"TUNNEL ACTIVE":form.jump.enabled?"READY TO INSPECT":"DIRECT"}</em></label>
+                  {form.jump.enabled&&<div className="db-jump-fields"><div className="field-pair"><label>JUMP HOST / IP<input value={form.jump.host} onChange={event=>patchJumpForm({host:event.target.value})} placeholder="bastion.company.net"/></label><label>SSH PORT<input value={form.jump.port} onChange={event=>patchJumpForm({port:event.target.value.replace(/\D/g,"").slice(0,5)})}/></label></div><div className="field-pair jump-user-auth"><label>SSH USERNAME<input value={form.jump.username} onChange={event=>patchJumpForm({username:event.target.value})} placeholder="dbadmin"/></label><label>AUTH<select value={form.jump.authMethod} onChange={event=>patchJumpForm({authMethod:event.target.value as JumpAuthMethod,password:"",passphrase:""})}><option value="agent">SSH agent</option><option value="key">Private key</option><option value="password">Password</option></select></label></div>{form.jump.authMethod==="key"&&<><label>PRIVATE KEY PATH<input value={form.jump.privateKeyPath} onChange={event=>patchJumpForm({privateKeyPath:event.target.value})} placeholder="Local path to id_ed25519"/></label><label>KEY PASSPHRASE (OPTIONAL)<input type="password" autoComplete="off" value={form.jump.passphrase} onChange={event=>patchJumpForm({passphrase:event.target.value})}/></label></>}{form.jump.authMethod==="password"&&<label>JUMP-SERVER PASSWORD<input type="password" autoComplete="off" value={form.jump.password} onChange={event=>patchJumpForm({password:event.target.value})}/></label>}<div className="db-jump-actions"><button type="button" onClick={()=>void inspectDatabaseJumpHost().catch(error=>notify(error instanceof Error?error.message:"Jump-server inspection failed"))}>Inspect host key</button>{activeDbTunnel&&<button type="button" onClick={()=>void closeDatabaseJumpTunnel(false)}>Disconnect tunnel</button>}</div>{jumpEvidence&&<div className={"db-jump-evidence "+jumpEvidence.trustStatus}><span><b>{jumpEvidence.trustStatus==="trusted"?"PIN MATCHED":jumpEvidence.trustStatus==="new"?"APPROVAL REQUIRED":"CONNECTION BLOCKED"}</b><small>{jumpEvidence.keyType} · {jumpEvidence.host}:{jumpEvidence.port}</small></span><code>{jumpEvidence.fingerprint}</code></div>}{activeDbTunnel&&<div className="db-jump-route"><span>127.0.0.1:{activeDbTunnel.localPort}</span><i>→ SSH →</i><span>{activeDbTunnel.targetHost}:{activeDbTunnel.targetPort}</span></div>}<small className="db-jump-note">The database sees its original target through the SSH forward. Passwords stay in volatile agent memory; saved profiles contain metadata only.</small></div>}
+                </section>
+                <div className="connector-buttons"><button className="secondary" onClick={applyDefaults}>Reset defaults</button><button className="primary" onClick={()=>connectToWorkspace()} disabled={connectionState==="connecting"}>{connectionState==="connecting"?"Validating…":form.jump.enabled?form.engine==="mongodb"?"Connect via Bastion → MongoDB":"Connect via Bastion → SQL":form.engine==="mongodb"?"Connect → MongoDB Studio":"Connect → SQL Workspace"}</button></div>
                 <div className={`connection-message ${connectionState}`}><i/><span><b>{activeAdapter?.name||adapterDefaults[form.engine].name}</b><small>{connectionMessage}</small></span></div>
-                <div className="capability-list"><span>{activeAdapter?.directAvailable?"Bundled direct driver":activeAdapter?.clientAvailable?"Approved local client":"Client readiness pending"}</span><span>Catalog browser</span><span>SQL + diagnostics</span><span>Environment autofill</span></div>
+                <div className="capability-list"><span>{activeAdapter?.directAvailable?"Bundled direct driver":activeAdapter?.clientAvailable?"Approved local client":"Client readiness pending"}</span><span>Catalog browser</span><span>SQL + diagnostics</span><span>{form.jump.enabled?"Verified bastion tunnel":"Direct route"}</span><span>Environment autofill</span></div>
               </div>
               <section className="catalog-browser"><header><div><span>02</span><p><b>Database objects</b><small>{catalogLoading?"Loading…":`${catalog.length} available`}</small></p></div><button onClick={()=>loadCatalog(false)} disabled={catalogLoading}>↻</button></header><label>⌕ <input value={catalogFilter} onChange={event=>setCatalogFilter(event.target.value)} placeholder="schema, table, view…"/></label><div>{filteredCatalog.length?filteredCatalog.map((item,index)=><button key={`${item.schema}-${item.name}-${index}`} onDoubleClick={()=>{if(form.engine==="mongodb"){setMongoCollection(item.name);setStudioTool("mongodb");setMongoMode("documents");setMongoData(null)}else updateSqlText(`SELECT *\nFROM ${item.schema?`${item.schema}.`:""}${item.name}\nLIMIT 100;`)}}><i>{item.type.slice(0,1)}</i><span><b>{item.name}</b><small>{item.schema||"default"} · {item.type}</small></span></button>):<p className="catalog-empty">Connect to load schemas, tables, views, and programmable objects.</p>}</div></section>
              </aside>:<button className={`connection-launcher ${connectionState}`} onClick={openConnectionPanel} onMouseEnter={openConnectionPanel} aria-expanded={false} aria-label="Open database Connection panel"><span>01</span><b>Connection</b><small>{connectionState==="connected"?adapterDefaults[form.engine].name:"Auto-hide"}</small><i/></button>)}
 
              {studioTool==="sql"&&<section className="sql-ide panel-dark">
-              <header className="ide-tabs"><div className="worksheet-tabs">{sqlTabs.map(tab=>{const parent=tab.parentId?sqlTabs.find(item=>item.id===tab.parentId):null;const childCount=sqlTabs.filter(item=>item.parentId===tab.id).length;return <div key={tab.id} className={`worksheet-tab ${activeSqlTabId===tab.id?"active":""} ${tab.parentId?"sub-sheet":childCount?"parent-sheet":""}`}><button className="worksheet-select" onClick={()=>switchSqlTab(tab.id)} onDoubleClick={()=>renameSqlTab(tab.id)} title={parent?`Sub-sheet of ${parent.name} · double-click to rename`:"Double-click to rename"}><i/>{parent&&<small>SUB</small>}<span>{tab.name}</span>{childCount>0&&<small className="sub-count">{childCount}</small>}{tab.dirty&&<em>●</em>}</button><button className="worksheet-close" onClick={()=>closeSqlTab(tab.id)} aria-label={`Close ${tab.name}`}>×</button></div>})}<button className="worksheet-add" onClick={addSqlTab} title="New worksheet (Ctrl+Alt+N)">+</button><button className="worksheet-add sub-sheet-add" onClick={addSqlSubSheet} title="New sub-sheet from active worksheet (Ctrl+Alt+Shift+N)">+ SUB</button></div><aside><span className={connectionState}><i/>{connectionState==="connected"?`${environment} · ${adapterDefaults[form.engine].name}`:"Not connected"}</span><b>{allowWrites?"Writes unlocked":"Read only"}</b><button className={sqlInspectorOpen?"inspector-toggle active":"inspector-toggle"} onClick={()=>setSqlInspectorOpen(value=>!value)}>Inspector</button></aside></header>
+              <header className="ide-tabs"><div className="worksheet-tabs">{sqlTabs.map(tab=>{const parent=tab.parentId?sqlTabs.find(item=>item.id===tab.parentId):null;const childCount=sqlTabs.filter(item=>item.parentId===tab.id).length;return <div key={tab.id} className={`worksheet-tab ${activeSqlTabId===tab.id?"active":""} ${tab.parentId?"sub-sheet":childCount?"parent-sheet":""}`}><button className="worksheet-select" onClick={()=>switchSqlTab(tab.id)} onDoubleClick={()=>renameSqlTab(tab.id)} title={parent?`Sub-sheet of ${parent.name} · double-click to rename`:"Double-click to rename"}><i/>{parent&&<small>SUB</small>}<span>{tab.name}</span>{childCount>0&&<small className="sub-count">{childCount}</small>}{tab.dirty&&<em>●</em>}</button><button className="worksheet-close" onClick={()=>closeSqlTab(tab.id)} aria-label={`Close ${tab.name}`}>×</button></div>})}<button className="worksheet-add" onClick={addSqlTab} title="New worksheet (Ctrl+Alt+N)">+</button><button className="worksheet-add sub-sheet-add" onClick={addSqlSubSheet} title="New sub-sheet from active worksheet (Ctrl+Alt+Shift+N)">+ SUB</button></div><aside><span className={connectionState}><i/>{connectionState==="connected"?(environment+" · "+adapterDefaults[form.engine].name+(activeDbTunnel?" · via bastion":"")):"Not connected"}</span><b>{allowWrites?"Writes unlocked":"Read only"}</b><button className={sqlInspectorOpen?"inspector-toggle active":"inspector-toggle"} onClick={()=>setSqlInspectorOpen(value=>!value)}>Inspector</button></aside></header>
               <div className="ide-toolbar"><button className="run" onClick={()=>runSql("selected")} disabled={queryRunning}>{queryRunning?"Running…":"▶ Run selected"}</button><button onClick={()=>runSql("all")} disabled={queryRunning}>Run all</button><button onClick={()=>runSql("explain")} disabled={queryRunning}>Explain</button><span className="toolbar-separator"/><button onClick={formatSql}>Format SQL</button><button onClick={saveEditorSession}>Save workspace</button><button onClick={saveCurrentScript}>Save script</button><label className="sql-import">Import SQL<input type="file" accept=".sql,text/sql,text/plain" onChange={async event=>{const file=event.target.files?.[0];if(!file)return;if(file.size>500000)return notify("SQL import is limited to 500 KB");updateSqlText(await file.text());event.target.value=""}}/></label><button onClick={()=>updateSqlText(sqlSamples[form.engine]||"SELECT *\nFROM table_name\nLIMIT 50;")}>Sample</button><span className="autocomplete-status">Autocomplete <i className="switch-on"/></span><label className={allowWrites?"write-unlock active":"write-unlock"}><input type="checkbox" checked={allowWrites} onChange={event=>setAllowWrites(event.target.checked)}/><i/>Unlock writes</label></div>
               <div className={`sql-workbench ${sqlInspectorOpen?"inspector-open":""}`}><div className="sql-workbench-main">
                 <div className="worksheet-context"><span><b>{adapterDefaults[form.engine].name}</b><small>{environment} · {form.database||"database not set"}</small></span><span><b>{sql.split(/\s+/).filter(Boolean).length}</b><small>tokens</small></span><span><b>{sql.split(/\r?\n/).length}</b><small>lines</small></span><em>Ctrl+Enter selection · Ctrl+Shift+Enter all · Ctrl+Alt+Shift+N sub-sheet</em></div>
