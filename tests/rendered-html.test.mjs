@@ -31,7 +31,7 @@ test("includes the secure pairing, catalog, validation, and SQL APIs",async()=>{
   for(const endpoint of ["/api/studio/pair","/api/adapters","/api/connections/check","/api/sql/catalog","/api/sql/run","/api/editor/session","/api/performance/sample","/api/performance/diagnostic-studio/catalog","/api/performance/diagnostic-studio/analyze","/api/performance/check","/api/performance/recommend","/api/performance/runtime-trace/capture","/api/performance/oracle-bottleneck/analyze","/api/performance/postgres-bottleneck/analyze","/api/performance/mongodb-bottleneck/analyze","/api/performance/relational-bottleneck/analyze","/api/performance/oracle-sql-id/check","/api/performance/plan-capture","/api/performance/plan-history","/api/logs/native","/api/logs/migration-compare","/api/logs/remote-tail","/api/logs/telemetry","/api/traces/analyze","/api/oracle/tkprof","/api/goldengate/diagnose","/api/mongodb/studio","/api/mongodb/mongosync","/api/devops/kubernetes-dashboard","/api/devops/docker-dashboard","/api/devops/kubernetes-topology","/api/devops/pipeline-runs","/api/devops/kafka-lag","/api/devops/run","/api/devops/container-action/preview","/api/terminal/ssh/open","/api/terminal/ssh/stream","/api/investigation/recordings","/api/investigation/events","/api/investigation/runbooks","/api/investigation/rules","/api/investigation/autofill-profiles"])assert.match(source,new RegExp(endpoint.replaceAll("/","\\/")));
   for(const capability of ["Unlock writes","CSV","JSON","Catalog browser","Environment autofill","Health snapshot","Tuning check","Controlled changes","Compare versions","Complete diagnostic evidence","Oracle SQL_ID X-Ray","GoldenGate","Flight recorder","Incident timeline","Cloud telemetry","Oracle TKPROF","SSH terminals"])assert.match(source,new RegExp(capability));
   assert.match(source,/localStorage\.setItem/);
-  assert.match(source,/type Profile = Omit<DbForm,"password"\|"jump">/);
+  assert.match(source,/type Profile = Omit<DbForm,"password"\|"jump"\|"sshTunnel">/);
 });
 
 test("consolidates the advanced DBridge performance workflows inside SQL Diagnostics",async()=>{
@@ -208,7 +208,7 @@ test("adds verified database jump-server and bastion routing",async()=>{
   const ssh=await readFile(new URL("../portable/ssh-terminal.mjs",import.meta.url),"utf8");
   for(const guard of ['hostVerifier','validateLocalForwardTarget','server.listen(target.requestedLocalPort, \"127.0.0.1\"','socket.on(\"data\", () => touch(session))'])assert.equal(ssh.includes(guard),true,guard);
   const server=await readFile(new URL("../portable/server.mjs",import.meta.url),"utf8");
-  for(const tlsGuard of ['tlsServername','connectTcp','rejectUnauthorized: true','serverName: connection.tlsServername'])assert.equal(server.includes(tlsGuard),true,tlsGuard);
+  for(const tlsGuard of ['tlsServername','createTcpConnection','rejectUnauthorized: true','serverName: connection.tlsServername'])assert.equal(server.includes(tlsGuard),true,tlsGuard);
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   for(const selector of [".db-jump-panel",".db-jump-evidence",".db-jump-route",".kp-jump-box"])assert.equal(css.includes(selector),true,selector);
 });

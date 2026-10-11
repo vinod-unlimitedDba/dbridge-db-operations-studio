@@ -221,6 +221,12 @@ html[data-theme="dark"] .connection-session-box{border:1px solid #252b32;backgro
 html[data-theme="dark"] .connection-session-box b{color:#929faa}
 html[data-theme="dark"] .connection-session-box button{border:1px solid #252e3e;background:#151618;color:#7d78c4}
 html[data-theme="dark"] .connection-session-box button:hover{border-color:#8b83f2;background:#1b1735}
+html[data-theme="dark"] .keep-pass-switch{border:1px solid #29333b;background:#1c252f;color:#959ea7}
+html[data-theme="dark"] .keep-pass-switch > i{background:#313a40}
+html[data-theme="dark"] .keep-pass-switch > i::after{background:#151618}
+html[data-theme="dark"] .keep-pass-switch.active > i{background:#4cdbce}
+html[data-theme="dark"] .keep-pass-switch:focus-within{outline:2px solid #8b83f2}
+html[data-theme="dark"] [data-theme="dark"] .keep-pass-switch > i{background:#4a677c}
 
 /* ===== sql-studio-dbgate.css ===== */
 html[data-theme="dark"] .quick-actions.reduced button,html[data-theme="dark"] .quick-actions.reduced button:nth-child(2n),html[data-theme="dark"] .quick-actions.reduced button:nth-child(n+3){border-right:1px solid #222a2e}

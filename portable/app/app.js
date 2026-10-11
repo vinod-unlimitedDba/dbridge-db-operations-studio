@@ -294,7 +294,7 @@ async function saveConnectionProfile() {
   if (requested === null) return;
   try {
     const name = sanitizeProfileName(requested);
-    const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
+    const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value, ...(window.DBridgeDatabaseTunnel?.metadata() || {}) });
     if (state.credentials.keepPass && $("#sqlPassword").value) await rememberDatabaseCredential(connection());
     const profiles = readConnectionProfiles().filter((profile) => !(profile.engine === engine && profile.environment === environment && profile.name === name));
     profiles.push({ name, engine, environment, entry });
@@ -763,6 +763,7 @@ function openFriendlyWorkspaceTarget(button) {
 
 function connection(engineId = "sqlEngine") {
   const payload = { environment: currentSqlEnvironment(), engine: $(`#${engineId}`).value, connection: { host: $("#sqlHost").value.trim(), port: $("#sqlPort").value.trim(), database: $("#sqlDatabase").value.trim(), username: $("#sqlUsername").value.trim(), password: $("#sqlPassword").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value } };
+  Object.assign(payload.connection, window.DBridgeDatabaseTunnel?.fields() || {});
   if (state.credentials.keepPass && payload.connection.authMode === "password") payload.connection.credentialId = databaseCredentialId(payload);
   return payload;
 }
@@ -782,7 +783,7 @@ function sanitizeConnectionSessionEntry(value) {
   if (port && (!/^\d{1,5}$/.test(port) || Number(port) > 65535)) throw new Error("Saved connection port is invalid");
   if (database && !/^[A-Za-z0-9_.:$@/-]{1,255}$/.test(database)) throw new Error("Saved database or service is invalid");
   if (username && !/^[A-Za-z0-9_.@+\\-]{1,255}$/.test(username)) throw new Error("Saved connection username is invalid");
-  return { environment, host, port, database, username, authMode, tlsMode };
+  return { environment, host, port, database, username, authMode, tlsMode, connectionMode: entry.connectionMode === "ssh" ? "ssh" : "direct", oracleServerDN: String(entry.oracleServerDN || "").slice(0, 2048) };
 }
 
 function readConnectionSession() {
@@ -815,7 +816,7 @@ function persistConnectionSession(engine = $("#sqlEngine").value, makeActive = t
   try {
     if (!sqlAdapterUi[engine]) throw new Error("Select a supported database engine");
     const stored = readConnectionSession();
-    const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value });
+    const entry = sanitizeConnectionSessionEntry({ environment, host: $("#sqlHost").value, port: $("#sqlPort").value, database: $("#sqlDatabase").value, username: $("#sqlUsername").value, authMode: $("#sqlAuthMode").value, tlsMode: $("#sqlTlsMode").value, ...(window.DBridgeDatabaseTunnel?.metadata() || {}) });
     stored.version = 2;
     stored.connections[connectionSessionKey(engine, environment)] = entry;
     if (makeActive) { stored.activeEngine = engine; stored.activeEnvironment = environment; }
@@ -851,6 +852,7 @@ function applySavedConnectionEntry(engine, entry) {
   $("#sqlUsername").value = clean.username;
   $("#sqlAuthMode").value = sqlContextOnlyEngines.has(engine) ? "context" : clean.authMode;
   $("#sqlTlsMode").value = clean.tlsMode;
+  window.DBridgeDatabaseTunnel?.restore(clean);
   return true;
 }
 
@@ -1111,7 +1113,7 @@ function updateConnectionAdapterUi() {
 function sqlConnectionFingerprint(payload = connection()) {
   const c = payload.connection || {};
   const credential = state.credentials.keepPass ? (c.credentialId || databaseCredentialId(payload)) : c.password;
-  return [payload.environment, payload.engine, c.authMode, c.tlsMode, c.host, c.port, c.database, c.username, credential].map((value) => String(value || "")).join("\u0000");
+  return [payload.environment, payload.engine, c.authMode, c.tlsMode, c.host, c.port, c.database, c.username, c.connectionMode, c.sshTunnel?.sessionId, c.sshTunnel?.forwardId, c.oracleServerDN, credential].map((value) => String(value || "")).join("\u0000");
 }
 
 function setSqlStudioConnectionState(status, title, detail) {

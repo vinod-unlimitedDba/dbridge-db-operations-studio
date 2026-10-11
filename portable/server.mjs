@@ -5,8 +5,9 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, extname, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import { connect as connectTcp } from "node:net";
 import { execFile } from "node:child_process";
+import { createConnection as createTcpConnection } from "node:net";
+import { DATABASE_TUNNEL_ENGINES, databaseTransport, mongodbTunnelOptions } from "./database-tunnel.mjs";
 import { oracleSqlIdCheckCatalog, oracleSqlIdCheckSql, analyzeOracleSqlIdCheck } from "./oracle-sql-id.mjs";
 import { oracleBottleneckCatalog, analyzeOracleBottlenecks } from "./oracle-bottleneck.mjs";
 import { postgresBottleneckCatalog, analyzePostgresBottlenecks } from "./postgres-bottleneck.mjs";
@@ -407,7 +408,9 @@ function normalizeDatabaseConnection(input) {
   if (database && !/^[A-Za-z0-9_.:$@/-]{1,255}$/.test(database)) throw new Error("Enter a valid database, service, project, or warehouse identifier");
   if (username && !/^[A-Za-z0-9_.@+\\-]{1,255}$/.test(username)) throw new Error("Enter a valid database username, profile, or secure key");
   if (/[\r\n\0]/.test(password) || password.length > 1000) throw new Error("The password contains unsupported characters");
-  return { engine, adapter, host, port, database, username, password, authMode, tlsMode, tlsServername };
+  const transport = databaseTransport(engine, source, { host, port });
+  const verifiedServername = tlsServername || (transport.sshTunnel ? transport.destinationHost : "");
+  return { engine, adapter, ...transport, database, username, password, authMode, tlsMode, tlsServername: verifiedServername };
 }
 
 async function directDriverModule(engine) {
@@ -428,7 +431,9 @@ function directAuthenticationSupported(connection) {
 
 async function shouldUseDirectDriver(input) {
   const connection = normalizeDatabaseConnection(input);
-  return directAuthenticationSupported(connection) && await directDriverAvailable(connection.engine);
+  const supported = directAuthenticationSupported(connection) && await directDriverAvailable(connection.engine);
+  if (connection.sshTunnel && !supported) throw new Error("SSH database connections require the bundled driver and supported database authentication. A local CLI fallback is not used for this tunnel.");
+  return supported;
 }
 
 function directJsonReplacer(_key, value) {
@@ -532,7 +537,7 @@ async function collectMongoBottleneckEvidence(input, focus = {}) {
   if (connection.tlsMode === "require") options.tls = true;
   if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
-  const client = new module.MongoClient(uri, options);
+  const client = new module.MongoClient(uri, { ...options, ...mongodbTunnelOptions(connection) });
   const results = [];
   let statusPromise;
   const database = () => client.db(connection.database || "admin");
@@ -711,7 +716,7 @@ async function collectMongoRuntimeTrace(input, identifier, collection = "") {
   if (connection.tlsMode === "require") options.tls = true;
   if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
-  const client = new module.MongoClient(uri, options);
+  const client = new module.MongoClient(uri, { ...options, ...mongodbTunnelOptions(connection) });
   const database = () => client.db(connection.database || "admin");
   const adminDatabase = () => client.db("admin");
   const admin = () => database().admin();
@@ -806,7 +811,7 @@ async function executeDirectMongo(input, sql) {
   if (connection.tlsMode === "require") options.tls = true;
   if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
-  const client = new module.MongoClient(uri, options);
+  const client = new module.MongoClient(uri, { ...options, ...mongodbTunnelOptions(connection) });
   try {
     await client.connect();
     const database = client.db(connection.database || "admin");
@@ -910,7 +915,11 @@ async function executeDirectMysql(input, sql) {
   const connection = normalizeDatabaseConnection(input); const module = await directDriverModule(connection.engine);
   if (!module?.createConnection) throw new Error("The bundled MySQL/MariaDB driver is unavailable");
   const options = { host: connection.host, port: Number(connection.port), database: connection.database || undefined, user: connection.username || undefined, password: connection.password, connectTimeout: Math.min(Math.max(Number(input.timeoutMs || 30000), 5000), 60000), rowsAsArray: false, multipleStatements: false };
-  if (connection.tlsServername) { options.host = connection.tlsServername; options.stream = () => connectTcp({ host: connection.host, port: Number(connection.port) }); }
+  if (connection.tlsServername) {
+    // Preserve the real database identity while the TCP socket uses loopback.
+    options.host = connection.tlsServername;
+    options.stream = () => createTcpConnection({ host: connection.host, port: Number(connection.port) });
+  }
   if (connection.tlsMode === "require") options.ssl = { rejectUnauthorized: true, minVersion: "TLSv1.2" };
   if (connection.tlsMode === "disable") options.ssl = undefined;
   const client = await module.createConnection(options);
@@ -922,7 +931,7 @@ async function executeDirectOracle(input, sql) {
   const connection = normalizeDatabaseConnection(input); const module = await directDriverModule("oracle"); const oracle = module?.default || module;
   if (!oracle?.getConnection) throw new Error("The bundled Oracle Thin driver is unavailable");
   const connectString = `${connection.tlsMode === "require" ? "tcps://" : ""}${connection.host}:${connection.port}/${connection.database}`;
-  const client = await oracle.getConnection({ user: connection.username, password: connection.password, connectString });
+  const client = await oracle.getConnection({ user: connection.username, password: connection.password, connectString, ...(connection.sshTunnel && connection.tlsMode === "require" ? { sslServerDNMatch: true, sslServerCertDN: connection.oracleServerDN } : {}) });
   try {
     const result = await client.execute(sql, [], { outFormat: oracle.OUT_FORMAT_OBJECT, maxRows: 1000, autoCommit: input.allowWrites === true });
     return directResult(result.rows || [{ rowsAffected: result.rowsAffected || 0 }], "direct:oracle", result.rowsAffected ?? result.rows?.length);
@@ -1059,7 +1068,7 @@ async function directDatabaseCatalog(input) {
   if (connection.engine === "mongodb") {
     const module = await directDriverModule("mongodb");
     const auth = connection.authMode === "password" && connection.username ? `${encodeURIComponent(connection.username)}:${encodeURIComponent(connection.password)}@` : "";
-    const client = new module.MongoClient(`mongodb://${auth}${connection.host}:${connection.port}/${connection.database || "admin"}`, { appName: "DBridge-Portable", serverSelectionTimeoutMS: 30000, connectTimeoutMS: 30000, maxPoolSize: 2, ...(connection.tlsMode === "require" ? { tls: true } : connection.tlsMode === "disable" ? { tls: false } : {}), ...(connection.tlsServername ? { servername: connection.tlsServername } : {}) });
+    const client = new module.MongoClient(`mongodb://${auth}${connection.host}:${connection.port}/${connection.database || "admin"}`, { appName: "DBridge-Portable", serverSelectionTimeoutMS: 30000, connectTimeoutMS: 30000, maxPoolSize: 2, ...mongodbTunnelOptions(connection), ...(connection.tlsMode === "require" ? { tls: true } : connection.tlsMode === "disable" ? { tls: false } : {}), ...(connection.tlsServername ? { servername: connection.tlsServername } : {}) });
     try {
       await client.connect();
       const collections = await client.db(connection.database || "admin").listCollections({}, { nameOnly: true }).toArray();
@@ -1084,6 +1093,7 @@ function assertReadOnly(sql, allowWrites, engine) {
 }
 
 function connectionCommand(input, sql) {
+  if (input.connection?.connectionMode === "ssh" || input.connection?.sshTunnel) throw new Error("SSH database connections require a bundled direct driver; CLI fallback is blocked.");
   const { engine, host, port, database, username, password, authMode } = normalizeDatabaseConnection(input);
   const contextAuth = authMode === "context";
   if (engine === "postgres") return { command: "psql", args: ["-X", "--csv", "-h", host, "-p", port, ...(!contextAuth && username ? ["-U", username] : []), "-d", database, "-c", sql], env: contextAuth ? {} : { PGPASSWORD: password } };
@@ -2215,7 +2225,7 @@ async function openMongoStudioConnection(input, appName = "DBridge-MongoDB-Studi
   if (connection.tlsMode === "require") options.tls = true;
   if (connection.tlsServername) options.servername = connection.tlsServername;
   if (connection.tlsMode === "disable") options.tls = false;
-  const client = new module.MongoClient(uri, options);
+  const client = new module.MongoClient(uri, { ...options, ...mongodbTunnelOptions(connection) });
   await client.connect();
   return { client, database: client.db(connection.database || "admin"), connection, timeout };
 }
@@ -2445,9 +2455,9 @@ async function runMongosyncController(input) {
   return { ok: true, action, endpoint: `127.0.0.1:${port}`, before: progress, response, requestedAt: new Date().toISOString(), note: action === "commit" ? "Cutover requested. Poll progress until state is COMMITTED before redirecting application traffic." : "Lifecycle request accepted. Refresh progress to observe the state transition." };
 }
 async function routeApi(req, res, url, port) {
-  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.31.0", port } });
+  if (req.method === "GET" && url.pathname === "/api/studio/pair" && isOperationsStudioOrigin(req)) return json(res, 200, { ok: true, token: SESSION_TOKEN, agent: { product: "DBridge Local Agent", version: "2.32.0", port } });
   if (!isTrusted(req, port)) return json(res, 403, { ok: false, error: "Request rejected by local security policy" });
-  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.31.0", host: HOST, port });
+  if (req.method === "GET" && url.pathname === "/api/health") return json(res, 200, { ok: true, product: "DBridge Portable", version: "2.32.0", host: HOST, port });
   if (req.method === "POST" && url.pathname === "/api/credentials/session") {
     const input = await body(req);
     return json(res, 200, { ok: true, credential: sessionCredentialVault.store(input), storage: "volatile-agent-memory" });
@@ -2477,6 +2487,17 @@ async function routeApi(req, res, url, port) {
     })));
     const adapters = Object.fromEntries(Object.entries(sqlAdapterCatalog).map(([id, adapter]) => [id, { ...adapter, ...availability[id], available: availability[id].directAvailable || availability[id].clientAvailable, preferredAccess: availability[id].directAvailable ? "direct" : "client" }]));
     return json(res, 200, { ok: true, total: Object.keys(adapters).length, available: Object.values(adapters).filter((adapter) => adapter.available).length, adapters });
+  }
+  if (req.method === "GET" && url.pathname === "/api/connections/tunnels") {
+    return json(res, 200, { ok: true, supportedEngines: [...DATABASE_TUNNEL_ENGINES], sessions: listSshSessions() });
+  }
+  if (req.method === "POST" && url.pathname === "/api/connections/tunnels/open") {
+    const input = await body(req);
+    if (!DATABASE_TUNNEL_ENGINES.has(input.engine)) throw new Error("This adapter does not support the SSH database route.");
+    const target = normalizeDatabaseConnection({ engine: input.engine, connection: { host: input.host, port: input.port } });
+    const forward = await openSshLocalForward(input.sessionId, { remoteHost: target.host, remotePort: target.port, localPort: 0 });
+    const session = listSshSessions().find((item) => item.sessionId === input.sessionId);
+    return json(res, 200, { ok: true, tunnel: { ...forward, sessionId: input.sessionId, jumpHost: session.host, jumpPort: session.port, jumpUsername: session.username } });
   }
   if (req.method === "POST" && url.pathname === "/api/connections/check") {
     const input = await body(req);

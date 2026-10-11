@@ -1,0 +1,9 @@
+.sql-jump-panel{display:grid;gap:10px;border:1px solid #b4cbe6;background:#edf4fc;padding:12px;border-radius:8px;margin:12px 0;min-width:0}
+.sql-jump-panel [hidden]{display:none!important}
+.sql-jump-fields{display:grid;gap:10px;min-width:0}
+.sql-jump-panel label,.sql-jump-panel select,.sql-jump-panel input{font-size:.875rem!important;line-height:1.4;min-width:0;max-width:100%}
+.sql-jump-panel p,.sql-jump-panel small{margin:0;font-size:.875rem;line-height:1.45;color:#34475d;overflow-wrap:anywhere}
+.sql-jump-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sql-jump-actions button{padding:8px;font-size:.875rem;border:1px solid #91aac8;border-radius:5px;color:#183453;background:#fff;cursor:pointer}
+.sql-jump-actions button:disabled{opacity:.5;cursor:not-allowed}
+.sql-jump-status{border-left:3px solid #3975b6;padding:8px;background:#fff}
