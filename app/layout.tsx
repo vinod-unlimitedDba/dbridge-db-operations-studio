@@ -5,6 +5,7 @@ import "./globals.css";
 import "./ssh-workspace.css";
 import "./execution-plan-investigator.css";
 import "./keep-pass.css";
+import "./awr-ash-analyzer.css";
 import "./light-studio.css";
 
 const geistSans = Geist({ variable: "--font-sans", subsets: ["latin"] });
